@@ -1,0 +1,418 @@
+<script>
+let LATEST_DATE_PREPARED = null;
+let ALL_TRAVEL_ORDERS = [];
+let PROJECT_ENGINEERS = [];
+let EMPLOYEES_LIST = [];
+let APPROVERS_LIST = [];
+let RECENT_PURPOSES = [];
+let RECENT_STATIONS = [];
+let CURRENT_VIEW = 'dashboard';
+
+const getTodayDate = () => {
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    return today.toISOString().split('T')[0];
+};
+
+const addDays = (date, days) => {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+};
+
+const formatToYyyyMmDd = (isoDate) => {
+    if (!isoDate) return '';
+    const date = new Date(isoDate);
+    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+    return date.toISOString().split('T')[0];
+};
+
+const formatInclusiveDates = (startStr, endStr) => {
+    if (!startStr || !endStr) return 'N/A';
+    try {
+        const startDate = new Date(startStr);
+        const endDate = new Date(endStr);
+        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+        
+        const startLocale = startDate.toLocaleDateString('en-US', options);
+        const endLocale = endDate.toLocaleDateString('en-US', options);
+
+        if (startLocale === endLocale) return startLocale;
+
+        const startMonth = startDate.getMonth();
+        const startYear = startDate.getFullYear();
+        const endMonth = endDate.getMonth();
+        const endYear = endDate.getFullYear();
+
+        if (startYear !== endYear) {
+            return `${startLocale} — ${endLocale}`;
+        }
+        if (startMonth !== endMonth) {
+            return `${startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} — ${endLocale}`;
+        }
+        
+        const startDay = startDate.getDate();
+        const endDay = endDate.getDate();
+        return `${startDate.toLocaleDateString('en-US', { month: 'long' })} ${startDay}–${endDay}, ${startYear}`;
+    } catch (e) {
+        console.error("Error formatting dates:", startStr, endStr, e);
+        return "Invalid Date";
+    }
+};
+
+const formatDateForDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const showLoader = (message = "Loading...") => {
+    const loader = document.getElementById('loader');
+    const loaderMessage = document.getElementById('loader-message');
+    if (loader && loaderMessage) {
+        loaderMessage.textContent = message;
+        loader.style.display = 'flex';
+    }
+};
+
+const hideLoader = () => {
+    const loader = document.getElementById('loader');
+    if (loader) {
+        loader.style.display = 'none';
+    }
+};
+
+const showToast = (message, isError = false) => {
+    const toast = document.getElementById('toast');
+    const toastMessage = document.getElementById('toast-message');
+    
+    if (toast && toastMessage) {
+        toastMessage.textContent = message;
+        toast.className = 'fixed bottom-5 right-5 text-white py-3 px-6 rounded-lg shadow-xl transition-transform duration-300 ease-out z-40';
+        toast.classList.add(isError ? 'bg-red-500' : 'bg-green-500', 'show');
+        
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+};
+
+const showFormError = (inputId, message) => {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const errorMsg = input.nextElementSibling;
+    if (errorMsg?.classList.contains('form-error-msg')) {
+        input.classList.add('invalid');
+        errorMsg.textContent = message;
+        errorMsg.classList.remove('hidden');
+    }
+};
+
+const clearFormErrors = (formId) => {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    form.querySelectorAll('.form-error-msg').forEach(el => el.classList.add('hidden'));
+    form.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
+};
+
+const updateNavActiveState = (viewName) => {
+    CURRENT_VIEW = viewName;
+    
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.toggle('active', link.id === `nav-${viewName}`);
+    });
+    
+    document.querySelectorAll('.nav-link-mobile').forEach(link => {
+        link.classList.toggle('active', link.id === `nav-${viewName}-mobile`);
+    });
+
+    const mobileMenu = document.getElementById('mobile-menu');
+    if (mobileMenu) {
+        mobileMenu.classList.add('hidden');
+    }
+};
+
+function setupNavListeners() {
+    const navItems = [
+        { id: 'nav-dashboard', view: 'dashboard' },
+        { id: 'nav-travel-orders', view: 'travel-orders' },
+        { id: 'nav-new-to', view: 'new' },
+        { id: 'nav-master-data', view: 'master-data' },
+        { id: 'nav-dashboard-mobile', view: 'dashboard' },
+        { id: 'nav-travel-orders-mobile', view: 'travel-orders' },
+        { id: 'nav-new-to-mobile', view: 'new' },
+        { id: 'nav-master-data-mobile', view: 'master-data' }
+    ];
+
+    navItems.forEach(({ id, view }) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (CURRENT_VIEW !== view) {
+                    if (view === 'dashboard') loadDashboardView();
+                    else if (view === 'travel-orders') loadTravelOrdersView();
+                    else if (view === 'new') loadNewToView();
+                    else if (view === 'master-data') loadMasterDataView();
+                }
+            });
+        }
+    });
+
+    const mobileMenuBtn = document.getElementById('mobile-menu-button');
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', () => {
+            const menu = document.getElementById('mobile-menu');
+            if (menu) {
+                menu.classList.toggle('hidden');
+                document.querySelectorAll('#mobile-menu-button svg').forEach(svg => svg.classList.toggle('hidden'));
+            }
+        });
+    }
+}
+
+window.addEventListener('load', () => {
+    console.log("=== SYSTEM INITIALIZING ===");
+    showLoader("Initializing System...");
+    
+    setupNavListeners();
+    
+    google.script.run
+        .withSuccessHandler(onInitialLoadSuccess)
+        .withFailureHandler(onInitialLoadFailure)
+        .getInitialData();
+});
+
+function onInitialLoadSuccess(data) {
+    console.log("=== INITIAL DATA RECEIVED ===");
+    console.log("Data:", data);
+    
+    if (data.error) {
+        console.error("Data contains error:", data.error);
+        onInitialLoadFailure({ message: data.error });
+        return;
+    }
+    
+    LATEST_DATE_PREPARED = data.latestDate ? new Date(data.latestDate) : null;
+    ALL_TRAVEL_ORDERS = data.travelOrders || [];
+    PROJECT_ENGINEERS = data.projectEngineers || [];
+    EMPLOYEES_LIST = data.employees || [];
+    APPROVERS_LIST = data.approvers || [];
+    RECENT_PURPOSES = data.recentPurposes || [];
+    RECENT_STATIONS = data.recentStations || [];
+    
+    console.log("Travel Orders:", ALL_TRAVEL_ORDERS.length);
+    console.log("Employees:", EMPLOYEES_LIST.length);
+    console.log("Project Engineers:", PROJECT_ENGINEERS.length);
+    console.log("Approvers:", APPROVERS_LIST.length);
+    
+    loadDashboardView();
+}
+
+function onInitialLoadFailure(error) {
+    console.error("=== INITIAL LOAD FAILED ===");
+    console.error("Error:", error);
+    hideLoader();
+    showToast("Failed to load data: " + error.message, true);
+}
+
+function populateEmployeeDropdown(selectElement, excludeValues = []) {
+    selectElement.innerHTML = '<option value="">Select Employee</option>';
+    EMPLOYEES_LIST
+        .filter(emp => emp.status === 'ACTIVE' && !excludeValues.includes(emp.name))
+        .forEach(emp => {
+            const option = document.createElement('option');
+            option.value = emp.name;
+            option.textContent = emp.name;
+            selectElement.appendChild(option);
+        });
+}
+
+function populateProjectEngineerDropdown(selectElement) {
+    selectElement.innerHTML = '<option value="">Select Project Engineer</option>';
+    PROJECT_ENGINEERS
+        .filter(pe => pe.status === 'ACTIVE')
+        .forEach(pe => {
+            const option = document.createElement('option');
+            option.value = pe.name;
+            option.textContent = pe.name;
+            selectElement.appendChild(option);
+        });
+}
+
+function getSelectedEmployees(containerId) {
+    const selects = document.querySelectorAll(`#${containerId} .employee-select`);
+    return Array.from(selects).map(sel => sel.value).filter(val => val);
+}
+
+function updateAllEmployeeDropdowns(containerId) {
+    const selectedEmployees = getSelectedEmployees(containerId);
+    const selects = document.querySelectorAll(`#${containerId} .employee-select`);
+    
+    selects.forEach(select => {
+        const currentValue = select.value;
+        const excludeValues = selectedEmployees.filter(emp => emp !== currentValue);
+        populateEmployeeDropdown(select, excludeValues);
+        select.value = currentValue;
+    });
+}
+
+function createEmployeeRow(container, isUpdate = false) {
+    const row = document.createElement('div');
+    row.className = 'employee-row flex gap-2';
+    
+    const select = document.createElement('select');
+    select.className = 'employee-select flex-1 input-field';
+    select.required = true;
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'remove-employee-btn bg-red-50 text-red-600 px-4 rounded-lg hover:bg-red-100 transition-all';
+    removeBtn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+    </svg>`;
+    
+    select.addEventListener('change', () => {
+        updateAllEmployeeDropdowns(container.id);
+    });
+    
+    removeBtn.addEventListener('click', () => {
+        row.remove();
+        updateEmployeeRemoveButtons(container);
+        updateAllEmployeeDropdowns(container.id);
+    });
+    
+    row.appendChild(select);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+    
+    updateAllEmployeeDropdowns(container.id);
+    updateEmployeeRemoveButtons(container);
+    
+    return row;
+}
+
+function updateEmployeeRemoveButtons(container) {
+    const rows = container.querySelectorAll('.employee-row');
+    rows.forEach(row => {
+        const removeBtn = row.querySelector('.remove-employee-btn');
+        removeBtn.classList.toggle('hidden', rows.length === 1);
+    });
+}
+
+function setupSuggestions(inputId, suggestionsId, dataArray) {
+    const input = document.getElementById(inputId);
+    const suggestionsDiv = document.getElementById(suggestionsId);
+    
+    if (!input || !suggestionsDiv) return;
+
+    input.addEventListener('focus', () => {
+        if (dataArray.length > 0) {
+            suggestionsDiv.innerHTML = '';
+            dataArray.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+                div.textContent = item;
+                div.addEventListener('click', () => {
+                    input.value = item;
+                    suggestionsDiv.classList.add('hidden');
+                });
+                suggestionsDiv.appendChild(div);
+            });
+            suggestionsDiv.classList.remove('hidden');
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => suggestionsDiv.classList.add('hidden'), 200);
+    });
+
+    input.addEventListener('input', () => {
+        const searchTerm = input.value.toLowerCase();
+        const filtered = dataArray.filter(item => item.toLowerCase().includes(searchTerm));
+        
+        if (filtered.length > 0 && input.value) {
+            suggestionsDiv.innerHTML = '';
+            filtered.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+                div.textContent = item;
+                div.addEventListener('click', () => {
+                    input.value = item;
+                    suggestionsDiv.classList.add('hidden');
+                });
+                suggestionsDiv.appendChild(div);
+            });
+            suggestionsDiv.classList.remove('hidden');
+        } else {
+            suggestionsDiv.classList.add('hidden');
+        }
+    });
+}
+
+function setupModeOfTravelListener(selectId, containerId, inputId) {
+    const select = document.getElementById(selectId);
+    const container = document.getElementById(containerId);
+    const input = document.getElementById(inputId);
+    
+    select.addEventListener('change', () => {
+        if (select.value === 'OTHER') {
+            container.classList.remove('hidden');
+            input.required = true;
+        } else {
+            container.classList.add('hidden');
+            input.required = false;
+            input.value = '';
+        }
+    });
+}
+
+function handleGeneratePdf(toId) {
+    showLoader("Generating PDF...");
+    
+    google.script.run
+        .withSuccessHandler(onPdfSuccess)
+        .withFailureHandler(onPdfFailure)
+        .generateAndLinkPdf(toId, null);
+}
+
+function onPdfSuccess(result) {
+    if (result.success) {
+        showToast("PDF Generated Successfully!");
+        window.open(result.pdfUrl, '_blank');
+        
+        showLoader("Refreshing data...");
+        google.script.run
+            .withSuccessHandler(data => {
+                if (data.error) {
+                    onInitialLoadFailure({ message: data.error });
+                    return;
+                }
+                LATEST_DATE_PREPARED = data.latestDate ? new Date(data.latestDate) : null;
+                ALL_TRAVEL_ORDERS = data.travelOrders;
+                PROJECT_ENGINEERS = data.projectEngineers || [];
+                EMPLOYEES_LIST = data.employees || [];
+                APPROVERS_LIST = data.approvers || [];
+                RECENT_PURPOSES = data.recentPurposes || [];
+                RECENT_STATIONS = data.recentStations || [];
+                
+                if (CURRENT_VIEW === 'travel-orders') {
+                    populateDashboardTable(ALL_TRAVEL_ORDERS);
+                }
+                hideLoader();
+            })
+            .withFailureHandler(onInitialLoadFailure)
+            .getInitialData();
+    } else {
+        onPdfFailure({ message: result.error });
+    }
+}
+
+function onPdfFailure(error) {
+    console.error("PDF Generation Error:", error);
+    showToast("PDF Generation Failed: " + error.message, true);
+    hideLoader();
+}
+
+function closeViewModal() {
+    document.getElementById('view-modal').classList.add('hidden');
+}
+</script>

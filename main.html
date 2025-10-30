@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Travel Order System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    
+    <?!= include('styles'); ?>
+    
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          },
+        },
+      }
+    </script>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <?!= include('nav'); ?>
+
+    <main id="content-area" class="container mx-auto p-4 md:p-6 lg:p-8">
+    </main>
+    
+    <div id="loader" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+        <div class="loader-spinner"></div>
+        <span id="loader-message" class="ml-4 text-white text-lg font-medium">Loading...</span>
+    </div>
+
+    <div id="toast" class="fixed bottom-5 right-5 bg-green-500 text-white py-3 px-6 rounded-lg shadow-xl transition-transform translate-x-full duration-300 ease-out z-40">
+        <span id="toast-message">Success!</span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    
+    <?!= include('script-core'); ?>
+    <?!= include('script-forms'); ?>
+    <?!= include('script-views'); ?>
+</body>
+</html>

@@ -1,0 +1,538 @@
+<script>
+let fpDatePrepared, fpInclusive, fpSubmission;
+let fpUpdateDatePrepared, fpUpdateInclusive, fpUpdateSubmission;
+
+function loadNewToView() {
+    console.log("=== LOADING NEW TO VIEW ===");
+    showLoader("Loading New Travel Order Form...");
+    updateNavActiveState('new');
+
+    google.script.run
+        .withSuccessHandler(html => {
+            console.log("New TO HTML received");
+            document.getElementById('content-area').innerHTML = html;
+            setTimeout(() => {
+                setupNewToFormListeners();
+                hideLoader();
+            }, 200);
+        })
+        .withFailureHandler(err => {
+            console.error("Failed to load new TO view:", err);
+            showToast("Failed to load form: " + err.message, true);
+            hideLoader();
+        })
+        .getNewToView();
+}
+
+function setupNewToFormListeners() {
+    const form = document.getElementById('new-to-form');
+    form.addEventListener('submit', handleNewToSubmit);
+    
+    document.getElementById('cancel-new-to-btn').addEventListener('click', (e) => {
+        e.preventDefault();
+        loadDashboardView();
+    });
+
+    const employeesContainer = document.getElementById('employees-container');
+    const firstSelect = employeesContainer.querySelector('.employee-select');
+    populateEmployeeDropdown(firstSelect);
+    
+    firstSelect.addEventListener('change', () => {
+        updateAllEmployeeDropdowns('employees-container');
+    });
+    
+    populateProjectEngineerDropdown(document.getElementById('requestingOfficer'));
+    
+    document.getElementById('add-employee-btn').addEventListener('click', () => {
+        createEmployeeRow(employeesContainer);
+    });
+    
+    setupModeOfTravelListener('modeOfTravel', 'otherModeContainer', 'otherMode');
+    setupDatePickers();
+    updateEmployeeRemoveButtons(employeesContainer);
+    
+    setupSuggestions('purpose', 'purpose-suggestions', RECENT_PURPOSES);
+    setupSuggestions('station', 'station-suggestions', RECENT_STATIONS);
+}
+
+function setupDatePickers() {
+    const inclusiveDatesInput = document.getElementById('inclusiveDates');
+    const inclusiveDatesDisplay = document.getElementById('inclusive-dates-display');
+    const dateSubmissionInput = document.getElementById('dateSubmission');
+    const submissionDateDisplay = document.getElementById('submission-date-display');
+    
+    fpDatePrepared = flatpickr("#datePrepared", {
+        dateFormat: "Y-m-d",
+        maxDate: "today",
+        minDate: LATEST_DATE_PREPARED ? formatToYyyyMmDd(addDays(LATEST_DATE_PREPARED, 1)) : null,
+        onChange: (selectedDates) => {
+            if (selectedDates.length > 0) {
+                const displayElem = document.getElementById('date-prepared-display');
+                if (displayElem) {
+                    displayElem.textContent = formatDateForDisplay(selectedDates[0].toISOString());
+                }
+                inclusiveDatesInput.disabled = false;
+                if (fpInclusive) {
+                    fpInclusive.set('minDate', selectedDates[0]);
+                }
+            }
+        }
+    });
+    
+    fpInclusive = flatpickr("#inclusiveDates", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        minDate: "today",
+        onChange: (selectedDates) => {
+            if (selectedDates.length === 2) {
+                const startDate = selectedDates[0];
+                const endDate = selectedDates[1];
+                const formattedDisplay = formatInclusiveDates(startDate.toISOString(), endDate.toISOString());
+                inclusiveDatesDisplay.textContent = formattedDisplay;
+                
+                const submissionDefaultDate = addDays(endDate, 3);
+                
+                dateSubmissionInput.disabled = false;
+                if (fpSubmission) {
+                    fpSubmission.set('minDate', endDate);
+                    fpSubmission.setDate(submissionDefaultDate, true);
+                }
+            }
+        }
+    });
+
+    fpSubmission = flatpickr("#dateSubmission", {
+        dateFormat: "Y-m-d",
+        minDate: "today",
+        onChange: (selectedDates) => {
+            if (selectedDates.length > 0) {
+                submissionDateDisplay.textContent = formatDateForDisplay(selectedDates[0].toISOString());
+            }
+        }
+    });
+}
+
+function validateNewToForm() {
+    clearFormErrors('new-to-form');
+    let isValid = true;
+    
+    const formData = {
+        datePrepared: document.getElementById('datePrepared').value,
+        inclusiveDates: document.getElementById('inclusiveDates').value,
+        destination: document.getElementById('destination').value,
+        station: document.getElementById('station').value,
+        purpose: document.getElementById('purpose').value,
+        modeOfTravel: document.getElementById('modeOfTravel').value,
+        requestingOfficer: document.getElementById('requestingOfficer').value,
+        dateSubmission: document.getElementById('dateSubmission').value,
+    };
+    
+    if (formData.modeOfTravel === 'OTHER') {
+        formData.modeOfTravel = document.getElementById('otherMode').value;
+        if (!formData.modeOfTravel) {
+            showFormError('otherMode', 'Please specify the mode of travel.'); 
+            isValid = false;
+        }
+    }
+    
+    const employees = getSelectedEmployees('employees-container');
+    
+    if (employees.length === 0) {
+        showToast("Please add at least one employee", true);
+        isValid = false;
+    }
+
+    const requiredFields = [
+        { id: 'datePrepared', name: 'Date Prepared' },
+        { id: 'inclusiveDates', name: 'Inclusive Dates' },
+        { id: 'destination', name: 'Destination' },
+        { id: 'station', name: 'Station' },
+        { id: 'purpose', name: 'Purpose' },
+        { id: 'modeOfTravel', name: 'Mode of Travel' },
+        { id: 'requestingOfficer', name: 'Requesting Officer' },
+        { id: 'dateSubmission', name: 'Submission Date' }
+    ];
+    
+    requiredFields.forEach(field => {
+        if (!formData[field.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())]) {
+            showFormError(field.id, `${field.name} is required.`);
+            isValid = false;
+        }
+    });
+    
+    if (!isValid) return null;
+
+    const dp = new Date(formData.datePrepared + 'T00:00:00');
+    const today = new Date(getTodayDate() + 'T00:00:00');
+    
+    if (dp > today) {
+        showFormError('datePrepared', 'Date Prepared cannot be in the future.');
+        isValid = false;
+    }
+    if (LATEST_DATE_PREPARED && dp <= LATEST_DATE_PREPARED) {
+        showFormError('datePrepared', `Date must be after the latest prepared date (${formatToYyyyMmDd(LATEST_DATE_PREPARED)}).`);
+        isValid = false;
+    }
+    
+    const [startStr, endStr] = formData.inclusiveDates.split(' to ');
+    if (!startStr || !endStr) {
+        showFormError('inclusiveDates', 'Please select a valid date range.');
+        return null;
+    }
+    
+    const start = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T00:00:00');
+    
+    if (start < dp) {
+        showFormError('inclusiveDates', 'Start Date cannot be before Date Prepared.');
+        isValid = false;
+    }
+    if (end < start) {
+        showFormError('inclusiveDates', 'End Date cannot be before Start Date.');
+        isValid = false;
+    }
+    
+    const submission = new Date(formData.dateSubmission + 'T00:00:00');
+    if (submission < end) {
+        showFormError('dateSubmission', 'Submission Date cannot be before Inclusive End Date.');
+        isValid = false;
+    }
+
+    if (!isValid) return null;
+
+    return {
+        datePrepared: dp.toISOString(),
+        inclusiveStart: start.toISOString(),
+        inclusiveEnd: end.toISOString(),
+        dateSubmission: submission.toISOString(),
+        employees: employees,
+        destination: formData.destination,
+        station: formData.station,
+        purpose: formData.purpose,
+        modeOfTravel: formData.modeOfTravel,
+        requestingOfficer: formData.requestingOfficer,
+    };
+}
+
+function handleNewToSubmit(e) {
+    e.preventDefault();
+    const formData = validateNewToForm();
+    
+    if (formData) {
+        showLoader("Saving Travel Order...");
+        document.getElementById('save-to-btn').disabled = true;
+        
+        google.script.run
+            .withSuccessHandler(onSaveSuccess)
+            .withFailureHandler(onSaveFailure)
+            .saveTravelOrder(formData);
+    }
+}
+
+function onSaveSuccess(result) {
+    if (result.success) {
+        showToast("Save successful! PDF is opening.");
+        window.open(result.pdfUrl, '_blank');
+        
+        ALL_TRAVEL_ORDERS.push(result.newRecord);
+        const newDatePrepared = new Date(result.newRecord.Date_Prepared);
+        if (!LATEST_DATE_PREPARED || newDatePrepared > LATEST_DATE_PREPARED) {
+            LATEST_DATE_PREPARED = newDatePrepared;
+        }
+        
+        loadDashboardView();
+    } else {
+        onSaveFailure({ message: result.error });
+    }
+}
+
+function onSaveFailure(error) {
+    console.error("Save Error:", error);
+    showToast("Save Failed: " + error.message, true);
+    document.getElementById('save-to-btn').disabled = false;
+    hideLoader();
+}
+
+function loadUpdateView(toId) {
+    console.log("=== LOADING UPDATE VIEW ===");
+    showLoader("Loading Update Form...");
+    updateNavActiveState('new');
+
+    google.script.run
+        .withSuccessHandler(html => {
+            console.log("Update HTML received");
+            document.getElementById('content-area').innerHTML = html;
+            
+            setTimeout(() => {
+                const data = ALL_TRAVEL_ORDERS.find(to => to.TO_ID === toId);
+                if (data) {
+                    populateUpdateForm(data);
+                    setupUpdateFormListeners();
+                }
+                hideLoader();
+            }, 200);
+        })
+        .withFailureHandler(err => {
+            console.error("Failed to load update view:", err);
+            showToast("Failed to load update form: " + err.message, true);
+            hideLoader();
+        })
+        .getUpdateView();
+}
+
+function populateUpdateForm(data) {
+    document.getElementById('update-to-id').value = data.TO_ID;
+    document.getElementById('update-to-id-display').textContent = `Editing: ${data.TO_ID}`;
+    
+    document.getElementById('update-destination').value = data.Destination;
+    document.getElementById('update-station').value = data.Station || '';
+    document.getElementById('update-purpose').value = data.Purpose;
+    
+    const modeSelect = document.getElementById('update-modeOfTravel');
+    const standardModes = ['GOVERNMENT VEHICLE', 'PRIVATE VEHICLE', 'PUBLIC TRANSPORT', 'AIR TRAVEL', 'SEA TRAVEL'];
+    
+    if (standardModes.includes(data.Mode_of_Travel)) {
+        modeSelect.value = data.Mode_of_Travel;
+    } else {
+        modeSelect.value = 'OTHER';
+        const otherContainer = document.getElementById('update-otherModeContainer');
+        const otherInput = document.getElementById('update-otherMode');
+        otherContainer.classList.remove('hidden');
+        otherInput.value = data.Mode_of_Travel;
+        otherInput.required = true;
+    }
+    
+    populateProjectEngineerDropdown(document.getElementById('update-requestingOfficer'));
+    document.getElementById('update-requestingOfficer').value = data.Requesting_Officer;
+
+    const employeesContainer = document.getElementById('update-employees-container');
+    employeesContainer.innerHTML = '';
+    
+    const employees = Array.isArray(data.Employees) ? data.Employees : [data.Employees || ''];
+    employees.forEach((emp) => {
+        const row = createEmployeeRow(employeesContainer, true);
+        const select = row.querySelector('.employee-select');
+        select.value = emp;
+    });
+    
+    updateAllEmployeeDropdowns('update-employees-container');
+
+    const datePrepared = formatToYyyyMmDd(data.Date_Prepared);
+    const inclusiveStart = formatToYyyyMmDd(data.Inclusive_Start);
+    const inclusiveEnd = formatToYyyyMmDd(data.Inclusive_End);
+    const dateSubmission = formatToYyyyMmDd(data.Date_Submission_Travel_Report);
+
+    fpUpdateDatePrepared = flatpickr("#update-datePrepared", {
+        dateFormat: "Y-m-d",
+        maxDate: "today",
+        defaultDate: datePrepared,
+        onChange: (selectedDates) => {
+            if (selectedDates.length > 0) {
+                const displayElem = document.getElementById('update-date-prepared-display');
+                if (displayElem) {
+                    displayElem.textContent = formatDateForDisplay(selectedDates[0].toISOString());
+                }
+                if (fpUpdateInclusive) fpUpdateInclusive.set('minDate', selectedDates[0]);
+            }
+        }
+    });
+    
+    fpUpdateInclusive = flatpickr("#update-inclusiveDates", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        minDate: datePrepared,
+        defaultDate: [inclusiveStart, inclusiveEnd],
+        onChange: (selectedDates) => {
+            if (selectedDates.length === 2) {
+                const startDate = selectedDates[0];
+                const endDate = selectedDates[1];
+                const formattedDisplay = formatInclusiveDates(startDate.toISOString(), endDate.toISOString());
+                document.getElementById('update-inclusive-dates-display').textContent = formattedDisplay;
+                if (fpUpdateSubmission) {
+                    fpUpdateSubmission.set('minDate', endDate);
+                }
+            }
+        }
+    });
+
+    fpUpdateSubmission = flatpickr("#update-dateSubmission", {
+        dateFormat: "Y-m-d",
+        minDate: inclusiveEnd,
+        defaultDate: dateSubmission,
+        onChange: (selectedDates) => {
+            if (selectedDates.length > 0) {
+                document.getElementById('update-submission-date-display').textContent = formatDateForDisplay(selectedDates[0].toISOString());
+            }
+        }
+    });
+
+    document.getElementById('update-inclusive-dates-display').textContent = formatInclusiveDates(data.Inclusive_Start, data.Inclusive_End);
+    document.getElementById('update-submission-date-display').textContent = formatDateForDisplay(data.Date_Submission_Travel_Report);
+    document.getElementById('update-date-prepared-display').textContent = formatDateForDisplay(data.Date_Prepared);
+}
+
+function setupUpdateFormListeners() {
+    document.getElementById('update-to-form').addEventListener('submit', handleUpdateToSubmit);
+    document.getElementById('cancel-update-to-btn').addEventListener('click', (e) => {
+        e.preventDefault();
+        loadDashboardView();
+    });
+    
+    const employeesContainer = document.getElementById('update-employees-container');
+    document.getElementById('update-add-employee-btn').addEventListener('click', () => {
+        createEmployeeRow(employeesContainer, true);
+    });
+    
+    setupModeOfTravelListener('update-modeOfTravel', 'update-otherModeContainer', 'update-otherMode');
+    setupSuggestions('update-purpose', 'update-purpose-suggestions', RECENT_PURPOSES);
+    setupSuggestions('update-station', 'update-station-suggestions', RECENT_STATIONS);
+}
+
+function validateUpdateToForm() {
+    clearFormErrors('update-to-form');
+    let isValid = true;
+    
+    const formData = {
+        toId: document.getElementById('update-to-id').value,
+        datePrepared: document.getElementById('update-datePrepared').value,
+        inclusiveDates: document.getElementById('update-inclusiveDates').value,
+        destination: document.getElementById('update-destination').value,
+        station: document.getElementById('update-station').value,
+        purpose: document.getElementById('update-purpose').value,
+        modeOfTravel: document.getElementById('update-modeOfTravel').value,
+        requestingOfficer: document.getElementById('update-requestingOfficer').value,
+        dateSubmission: document.getElementById('update-dateSubmission').value,
+    };
+    
+    if (formData.modeOfTravel === 'OTHER') {
+        formData.modeOfTravel = document.getElementById('update-otherMode').value;
+        if (!formData.modeOfTravel) {
+            showFormError('update-otherMode', 'Please specify the mode of travel.');
+            isValid = false;
+        }
+    }
+    
+    const employees = getSelectedEmployees('update-employees-container');
+    
+    if (employees.length === 0) {
+        showToast("Please add at least one employee", true);
+        isValid = false;
+    }
+
+    const requiredFields = [
+        { id: 'update-datePrepared', name: 'Date Prepared', key: 'datePrepared' },
+        { id: 'update-inclusiveDates', name: 'Inclusive Dates', key: 'inclusiveDates' },
+        { id: 'update-destination', name: 'Destination', key: 'destination' },
+        { id: 'update-station', name: 'Station', key: 'station' },
+        { id: 'update-purpose', name: 'Purpose', key: 'purpose' },
+        { id: 'update-modeOfTravel', name: 'Mode of Travel', key: 'modeOfTravel' },
+        { id: 'update-requestingOfficer', name: 'Requesting Officer', key: 'requestingOfficer' },
+        { id: 'update-dateSubmission', name: 'Submission Date', key: 'dateSubmission' }
+    ];
+    
+    requiredFields.forEach(field => {
+        if (!formData[field.key]) {
+            showFormError(field.id, `${field.name} is required.`);
+            isValid = false;
+        }
+    });
+
+    if (!isValid) return null;
+
+    const dp = new Date(formData.datePrepared + 'T00:00:00');
+    const today = new Date(getTodayDate() + 'T00:00:00');
+    
+    if (dp > today) {
+        showFormError('update-datePrepared', 'Date Prepared cannot be in the future.');
+        isValid = false;
+    }
+    
+    const [startStr, endStr] = formData.inclusiveDates.split(' to ');
+    if (!startStr || !endStr) {
+        showFormError('update-inclusiveDates', 'Please select a valid date range.');
+        return null;
+    }
+    
+    const start = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T00:00:00');
+    
+    if (start < dp) {
+        showFormError('update-inclusiveDates', 'Start Date cannot be before Date Prepared.');
+        isValid = false;
+    }
+    
+    const submission = new Date(formData.dateSubmission + 'T00:00:00');
+    if (submission < end) {
+        showFormError('update-dateSubmission', 'Submission Date cannot be before Inclusive End Date.');
+        isValid = false;
+    }
+
+    if (!isValid) return null;
+
+    return {
+        datePrepared: dp.toISOString(),
+        inclusiveStart: start.toISOString(),
+        inclusiveEnd: end.toISOString(),
+        dateSubmission: submission.toISOString(),
+        employees: employees,
+        destination: formData.destination,
+        station: formData.station,
+        purpose: formData.purpose,
+        modeOfTravel: formData.modeOfTravel,
+        requestingOfficer: formData.requestingOfficer,
+    };
+}
+
+function handleUpdateToSubmit(e) {
+    e.preventDefault();
+    const formData = validateUpdateToForm();
+    const toId = document.getElementById('update-to-id').value;
+    
+    if (formData) {
+        showLoader("Updating Travel Order...");
+        document.getElementById('update-to-btn').disabled = true;
+        
+        google.script.run
+            .withSuccessHandler(onUpdateSuccess)
+            .withFailureHandler(onUpdateFailure)
+            .updateTravelOrder(formData, toId);
+    }
+}
+
+function onUpdateSuccess(result) {
+    if (result.success) {
+        showToast("Update successful! PDF is re-opening.");
+        window.open(result.pdfUrl, '_blank');
+        
+        const index = ALL_TRAVEL_ORDERS.findIndex(to => to.TO_ID === result.updatedRecord.TO_ID);
+        if (index !== -1) {
+            ALL_TRAVEL_ORDERS[index] = result.updatedRecord;
+        } else {
+            ALL_TRAVEL_ORDERS.push(result.updatedRecord);
+        }
+
+        const newDatePrepared = new Date(result.updatedRecord.Date_Prepared);
+        const latest = LATEST_DATE_PREPARED ? new Date(LATEST_DATE_PREPARED) : null;
+        
+        if (!latest || newDatePrepared > latest) {
+            LATEST_DATE_PREPARED = newDatePrepared;
+        } else if (newDatePrepared.toISOString() === latest.toISOString()) {
+            LATEST_DATE_PREPARED = ALL_TRAVEL_ORDERS.reduce((max, to) => {
+                const d = new Date(to.Date_Prepared);
+                return d > max ? d : max;
+            }, new Date(0));
+        }
+        
+        loadDashboardView();
+    } else {
+        onUpdateFailure({ message: result.error });
+    }
+}
+
+function onUpdateFailure(error) {
+    console.error("Update Error:", error);
+    showToast("Update Failed: " + error.message, true);
+    document.getElementById('update-to-btn').disabled = false;
+    hideLoader();
+}
+</script>

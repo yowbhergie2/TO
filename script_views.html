@@ -1,0 +1,708 @@
+<script>
+function loadDashboardView() {
+    console.log("=== LOADING DASHBOARD VIEW ===");
+    showLoader("Loading Dashboard...");
+    updateNavActiveState('dashboard');
+
+    google.script.run
+        .withSuccessHandler(html => {
+            console.log("Dashboard HTML received, length:", html.length);
+            document.getElementById('content-area').innerHTML = html;
+            
+            setTimeout(() => {
+                console.log("Calling loadDashboardAnalytics with ALL_TRAVEL_ORDERS:", ALL_TRAVEL_ORDERS.length);
+                loadDashboardAnalyticsDirectly();
+            }, 500);
+        })
+        .withFailureHandler(err => {
+            console.error("Failed to load dashboard HTML:", err);
+            showToast("Failed to load dashboard: " + err.message, true);
+            hideLoader();
+        })
+        .getDashboardView();
+}
+
+function loadDashboardAnalyticsDirectly() {
+    console.log("=== LOADING ANALYTICS DIRECTLY ===");
+    
+    const analyticsData = calculateAnalytics(ALL_TRAVEL_ORDERS);
+    console.log("Analytics calculated:", analyticsData);
+    
+    setTimeout(() => {
+        populateDashboardAnalytics(analyticsData);
+    }, 200);
+}
+
+function calculateAnalytics(allOrders) {
+    console.log("Calculating analytics for", allOrders.length, "orders");
+    
+    const totalOrders = allOrders.length;
+    const completedOrders = allOrders.filter(o => o.Status === "Completed").length;
+    const pendingOrders = allOrders.filter(o => o.Status === "Pending PDF").length;
+    const errorOrders = allOrders.filter(o => o.Status === "PDF Error").length;
+
+    const employeeStats = {};
+    allOrders.forEach(order => {
+        const employees = Array.isArray(order.Employees) ? order.Employees : [order.Employees];
+        employees.forEach(emp => {
+            if (emp) {
+                employeeStats[emp] = (employeeStats[emp] || 0) + 1;
+            }
+        });
+    });
+
+    const topEmployees = Object.entries(employeeStats)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+
+    const monthlyStats = {};
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthlyStats[key] = 0;
+    }
+
+    allOrders.forEach(order => {
+        if (order.Date_Prepared) {
+            const date = new Date(order.Date_Prepared);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            if (monthlyStats.hasOwnProperty(key)) {
+                monthlyStats[key]++;
+            }
+        }
+    });
+
+    const monthlyData = Object.entries(monthlyStats).map(([month, count]) => ({ month, count }));
+
+    const destinationStats = {};
+    allOrders.forEach(order => {
+        if (order.Destination) {
+            destinationStats[order.Destination] = (destinationStats[order.Destination] || 0) + 1;
+        }
+    });
+
+    const topDestinations = Object.entries(destinationStats)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+    const modeStats = {};
+    allOrders.forEach(order => {
+        if (order.Mode_of_Travel) {
+            modeStats[order.Mode_of_Travel] = (modeStats[order.Mode_of_Travel] || 0) + 1;
+        }
+    });
+
+    const travelModes = Object.entries(modeStats)
+        .map(([mode, count]) => ({ mode, count }))
+        .sort((a, b) => b.count - a.count);
+
+    const purposeStats = {};
+    allOrders.forEach(order => {
+        if (order.Purpose) {
+            purposeStats[order.Purpose] = (purposeStats[order.Purpose] || 0) + 1;
+        }
+    });
+
+    const topPurposes = Object.entries(purposeStats)
+        .map(([purpose, count]) => ({ purpose, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+    const recentOrders = allOrders
+        .sort((a, b) => {
+            const dateA = a.Created_Date ? new Date(a.Created_Date) : new Date(0);
+            const dateB = b.Created_Date ? new Date(b.Created_Date) : new Date(0);
+            return dateB - dateA;
+        })
+        .slice(0, 5);
+
+    return {
+        summary: {
+            total: totalOrders,
+            completed: completedOrders,
+            pending: pendingOrders,
+            error: errorOrders
+        },
+        employeeStats: topEmployees,
+        monthlyStats: monthlyData,
+        destinationStats: topDestinations,
+        travelModes: travelModes,
+        purposeStats: topPurposes,
+        recentOrders: recentOrders
+    };
+}
+
+function populateDashboardAnalytics(data) {
+    console.log("=== POPULATING DASHBOARD ANALYTICS ===");
+    
+    const statTotalOrders = document.getElementById('stat-total-orders');
+    const statCompletedOrders = document.getElementById('stat-completed-orders');
+    const statActiveTravelers = document.getElementById('stat-active-travelers');
+    const statThisMonth = document.getElementById('stat-this-month');
+    
+    if (statTotalOrders) statTotalOrders.textContent = data.summary.total;
+    if (statCompletedOrders) statCompletedOrders.textContent = data.summary.completed;
+    if (statActiveTravelers) statActiveTravelers.textContent = data.employeeStats.length;
+    
+    const currentMonth = new Date().toISOString().substring(0, 7);
+    const thisMonthData = data.monthlyStats.find(m => m.month === currentMonth);
+    if (statThisMonth) statThisMonth.textContent = thisMonthData ? thisMonthData.count : 0;
+
+    const topTravelersList = document.getElementById('top-travelers-list');
+    if (topTravelersList) {
+        topTravelersList.innerHTML = '';
+        if (data.employeeStats && data.employeeStats.length > 0) {
+            data.employeeStats.forEach((emp, index) => {
+                const colors = ['bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-violet-500'];
+                const color = colors[index % colors.length];
+                topTravelersList.innerHTML += `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div class="flex items-center flex-1">
+                            <div class="w-10 h-10 ${color} rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 shadow-md">
+                                ${emp.count}
+                            </div>
+                            <span class="text-sm font-medium text-gray-700">${emp.name}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            topTravelersList.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No data available</p>';
+        }
+    }
+
+    const topDestinationsList = document.getElementById('top-destinations-list');
+    if (topDestinationsList) {
+        topDestinationsList.innerHTML = '';
+        if (data.destinationStats && data.destinationStats.length > 0) {
+            data.destinationStats.forEach((dest, index) => {
+                const colors = ['bg-pink-500', 'bg-rose-500', 'bg-red-500', 'bg-orange-500', 'bg-amber-500'];
+                const color = colors[index % colors.length];
+                topDestinationsList.innerHTML += `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div class="flex items-center flex-1">
+                            <div class="w-10 h-10 ${color} rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 shadow-md">
+                                ${dest.count}
+                            </div>
+                            <span class="text-sm font-medium text-gray-700">${dest.name}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            topDestinationsList.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No data available</p>';
+        }
+    }
+
+    const monthlyTrendChart = document.getElementById('monthly-trend-chart');
+    if (monthlyTrendChart) {
+        monthlyTrendChart.innerHTML = '';
+        if (data.monthlyStats && data.monthlyStats.length > 0) {
+            const maxMonthly = Math.max(...data.monthlyStats.map(m => m.count), 1);
+            data.monthlyStats.forEach(month => {
+                const percentage = (month.count / maxMonthly) * 100;
+                const [year, monthNum] = month.month.split('-');
+                const monthName = new Date(year, monthNum - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                monthlyTrendChart.innerHTML += `
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="text-xs font-medium text-gray-600 w-12">${monthName}</span>
+                        <div class="flex-1">
+                            <div class="w-full bg-gray-200 rounded-full h-6">
+                                <div class="bg-gradient-to-r from-violet-500 to-purple-600 h-6 rounded-full flex items-center justify-end pr-2 transition-all" style="width: ${percentage}%">
+                                    ${month.count > 0 ? '<span class="text-white text-xs font-bold">' + month.count + '</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            monthlyTrendChart.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No data available</p>';
+        }
+    }
+
+    const modeOfTravelChart = document.getElementById('mode-of-travel-chart');
+    if (modeOfTravelChart) {
+        modeOfTravelChart.innerHTML = '';
+        if (data.travelModes && data.travelModes.length > 0) {
+            data.travelModes.forEach((mode, index) => {
+                const colors = ['bg-teal-500', 'bg-green-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-lime-500'];
+                const color = colors[index % colors.length];
+                modeOfTravelChart.innerHTML += `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div class="flex items-center flex-1">
+                            <div class="w-10 h-10 ${color} rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 shadow-md">
+                                ${mode.count}
+                            </div>
+                            <span class="text-sm font-medium text-gray-700">${mode.mode}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            modeOfTravelChart.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No data available</p>';
+        }
+    }
+
+    console.log("Dashboard analytics populated successfully!");
+    hideLoader();
+}
+
+function loadTravelOrdersView() {
+    console.log("=== LOADING TRAVEL ORDERS VIEW ===");
+    showLoader("Loading Travel Orders...");
+    updateNavActiveState('travel-orders');
+
+    google.script.run
+        .withSuccessHandler(html => {
+            console.log("Travel Orders HTML received");
+            document.getElementById('content-area').innerHTML = html;
+            
+            setTimeout(() => {
+                populateDashboardTable(ALL_TRAVEL_ORDERS);
+                setupDashboardListeners();
+                hideLoader();
+            }, 200);
+        })
+        .withFailureHandler(err => {
+            console.error("Failed to load travel orders view:", err);
+            showToast("Failed to load travel orders: " + err.message, true);
+            hideLoader();
+        })
+        .getTravelOrdersView();
+}
+
+function populateDashboardTable(data) {
+    console.log("Populating dashboard table with", data.length, "records");
+    
+    const tableBody = document.getElementById('to-table-body');
+    const template = document.getElementById('table-row-template');
+    const emptyState = document.getElementById('dashboard-empty-state');
+    const totalOrders = document.getElementById('total-orders');
+    
+    if (!tableBody || !template) {
+        console.error("Table elements not found");
+        return;
+    }
+    
+    tableBody.innerHTML = '';
+    
+    if (!data || data.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (totalOrders) totalOrders.textContent = '0';
+        return;
+    }
+    
+    if (emptyState) emptyState.classList.add('hidden');
+    if (totalOrders) totalOrders.textContent = data.length;
+
+    data.sort((a, b) => new Date(b.Created_Date) - new Date(a.Created_Date));
+
+    data.forEach(item => {
+        try {
+            const clone = template.content.cloneNode(true);
+            const row = clone.querySelector('tr');
+            
+            row.dataset.toid = item.TO_ID;
+            clone.querySelector('.to-id').textContent = item.TO_ID;
+            clone.querySelector('.inclusive-dates').textContent = formatInclusiveDates(item.Inclusive_Start, item.Inclusive_End);
+            
+            let employeesDisplay = item.Employees;
+            if (Array.isArray(employeesDisplay)) {
+                employeesDisplay = employeesDisplay.join(', ');
+            }
+            clone.querySelector('.employees').textContent = employeesDisplay;
+            
+            const statusSpan = clone.querySelector('.status');
+            statusSpan.textContent = item.Status;
+            statusSpan.classList.add(
+                item.Status === 'Completed' ? 'status-completed' :
+                item.Status === 'PDF Error' ? 'status-error' : 'status-pending'
+            );
+
+            const viewBtn = clone.querySelector('.view-btn');
+            const editBtn = clone.querySelector('.edit-btn');
+            const pdfLink = clone.querySelector('.pdf-link');
+            const pdfBtn = clone.querySelector('.pdf-btn');
+            
+            viewBtn.dataset.toid = item.TO_ID;
+            editBtn.dataset.toid = item.TO_ID;
+            pdfBtn.dataset.toid = item.TO_ID;
+
+            if (item.PDF_Link) {
+                pdfLink.href = item.PDF_Link;
+                pdfLink.classList.remove('hidden');
+                pdfBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>Re-Gen';
+            } else {
+                pdfLink.classList.add('hidden');
+            }
+            
+            tableBody.appendChild(clone);
+        } catch (err) {
+            console.error("Error populating row:", item.TO_ID, err);
+        }
+    });
+    
+    console.log("Table populated successfully");
+}
+
+function setupDashboardListeners() {
+    const table = document.getElementById('to-table');
+    if (!table) {
+        console.error("Table not found!");
+        return;
+    }
+    
+    table.addEventListener('click', (e) => {
+        const viewBtn = e.target.closest('.view-btn');
+        const editBtn = e.target.closest('.edit-btn');
+        const pdfBtn = e.target.closest('.pdf-btn');
+        
+        if (viewBtn) {
+            e.preventDefault();
+            showViewModal(viewBtn.dataset.toid);
+        } else if (editBtn) {
+            e.preventDefault();
+            loadUpdateView(editBtn.dataset.toid);
+        } else if (pdfBtn) {
+            e.preventDefault();
+            handleGeneratePdf(pdfBtn.dataset.toid);
+        }
+    });
+
+    const searchInput = document.getElementById('dashboard-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredOrders = ALL_TRAVEL_ORDERS.filter(order => {
+                return Object.values(order).some(val => {
+                    if (val === null || val === undefined) return false;
+                    return val.toString().toLowerCase().includes(searchTerm);
+                });
+            });
+            populateDashboardTable(filteredOrders);
+        });
+    }
+}
+
+function showViewModal(toId) {
+    const order = ALL_TRAVEL_ORDERS.find(o => o.TO_ID === toId);
+    if (!order) return;
+
+    const modal = document.getElementById('view-modal');
+    const content = document.getElementById('view-modal-content');
+
+    let employeesDisplay = order.Employees;
+    if (Array.isArray(employeesDisplay)) {
+        employeesDisplay = employeesDisplay.join(', ');
+    }
+
+    content.innerHTML = `
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-t-2xl">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-bold text-white">${order.TO_ID}</h2>
+                    <p class="text-indigo-100 mt-1">Travel Order Details</p>
+                </div>
+                <button onclick="closeViewModal()" class="text-white hover:text-indigo-100">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="p-6">
+            <div class="detail-row">
+                <span class="detail-label">Date Prepared:</span>
+                <span class="detail-value">${formatDateForDisplay(order.Date_Prepared)}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Inclusive Dates:</span>
+                <span class="detail-value">${formatInclusiveDates(order.Inclusive_Start, order.Inclusive_End)}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Employees:</span>
+                <span class="detail-value">${employeesDisplay}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Destination:</span>
+                <span class="detail-value">${order.Destination}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Station:</span>
+                <span class="detail-value">${order.Station}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Purpose:</span>
+                <span class="detail-value">${order.Purpose}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Mode of Travel:</span>
+                <span class="detail-value">${order.Mode_of_Travel}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Requesting Officer:</span>
+                <span class="detail-value">${order.Requesting_Officer}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Submission Date:</span>
+                <span class="detail-value">${formatDateForDisplay(order.Date_Submission_Travel_Report)}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Status:</span>
+                <span class="detail-value">
+                    <span class="status-badge ${order.Status === 'Completed' ? 'status-completed' : order.Status === 'PDF Error' ? 'status-error' : 'status-pending'}">
+                        ${order.Status}
+                    </span>
+                </span>
+            </div>
+            ${order.PDF_Link ? `
+            <div class="detail-row">
+                <span class="detail-label">PDF:</span>
+                <span class="detail-value">
+                    <a href="${order.PDF_Link}" target="_blank" class="text-indigo-600 hover:text-indigo-800 font-medium">
+                        View PDF Document
+                    </a>
+                </span>
+            </div>` : ''}
+        </div>
+        <div class="px-6 py-4 bg-gray-50 rounded-b-2xl flex justify-end gap-3">
+            <button onclick="closeViewModal()" class="btn-cancel inline-flex items-center">Close</button>
+            <button onclick="closeViewModal(); loadUpdateView('${order.TO_ID}')" class="btn-primary inline-flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                </svg>
+                Edit
+            </button>
+        </div>
+    `;
+
+    modal.classList.remove('hidden');
+}
+
+function loadMasterDataView() {
+    console.log("=== LOADING MASTER DATA VIEW ===");
+    showLoader("Loading Master Data...");
+    updateNavActiveState('master-data');
+
+    google.script.run
+        .withSuccessHandler(html => {
+            console.log("Master Data HTML received");
+            document.getElementById('content-area').innerHTML = html;
+            
+            setTimeout(() => {
+                populateMasterData();
+                setupMasterDataListeners();
+                hideLoader();
+            }, 200);
+        })
+        .withFailureHandler(err => {
+            console.error("Failed to load master data view:", err);
+            showToast("Failed to load master data: " + err.message, true);
+            hideLoader();
+        })
+        .getMasterDataView();
+}
+
+function setupMasterDataListeners() {
+    const tabs = document.querySelectorAll('.master-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            const tabName = tab.dataset.tab;
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            document.getElementById(`${tabName}-tab`).classList.remove('hidden');
+        });
+    });
+}
+
+function populateMasterData() {
+    console.log("Populating master data...");
+    console.log("Employees:", EMPLOYEES_LIST.length);
+    console.log("Engineers:", PROJECT_ENGINEERS.length);
+    console.log("Approvers:", APPROVERS_LIST.length);
+    
+    populateMasterList('employees', EMPLOYEES_LIST);
+    populateMasterList('engineers', PROJECT_ENGINEERS);
+    populateMasterList('approvers', APPROVERS_LIST);
+}
+
+function populateMasterList(type, data) {
+    const activeContainer = document.getElementById(`active-${type}`);
+    const inactiveContainer = document.getElementById(`inactive-${type}`);
+    const template = document.getElementById('master-item-template');
+
+    if (!activeContainer || !inactiveContainer || !template) {
+        console.error(`Master data containers not found for ${type}`);
+        return;
+    }
+
+    activeContainer.innerHTML = '';
+    inactiveContainer.innerHTML = '';
+
+    const activeItems = data.filter(item => item.status === 'ACTIVE');
+    const inactiveItems = data.filter(item => item.status === 'INACTIVE');
+
+    activeItems.forEach(item => {
+        const clone = template.content.cloneNode(true);
+        clone.querySelector('.item-name').textContent = item.name;
+
+        if (item.employeeId) {
+            clone.querySelector('.item-employee-id').textContent = `ID: ${item.employeeId}`;
+            clone.querySelector('.item-employee-id').classList.remove('hidden');
+        }
+
+        if (item.position) {
+            clone.querySelector('.item-position').textContent = item.position;
+            clone.querySelector('.item-position').classList.remove('hidden');
+        }
+
+        const btn = clone.querySelector('.toggle-status-btn');
+        btn.title = 'Set as Inactive';
+        btn.addEventListener('click', () => toggleStatus(type, item.name, 'INACTIVE', item.position, item.employeeId));
+        activeContainer.appendChild(clone);
+    });
+
+    inactiveItems.forEach(item => {
+        const clone = template.content.cloneNode(true);
+        clone.querySelector('.item-name').textContent = item.name;
+        clone.querySelector('.item-name').classList.add('text-gray-500');
+
+        if (item.employeeId) {
+            clone.querySelector('.item-employee-id').textContent = `ID: ${item.employeeId}`;
+            clone.querySelector('.item-employee-id').classList.remove('hidden');
+        }
+
+        if (item.position) {
+            clone.querySelector('.item-position').textContent = item.position;
+            clone.querySelector('.item-position').classList.remove('hidden');
+        }
+
+        const btn = clone.querySelector('.toggle-status-btn');
+        btn.title = 'Set as Active';
+        btn.addEventListener('click', () => toggleStatus(type, item.name, 'ACTIVE', item.position, item.employeeId));
+        inactiveContainer.appendChild(clone);
+    });
+
+    if (activeItems.length === 0) {
+        activeContainer.innerHTML = '<p class="text-gray-400 text-sm italic">No active entries</p>';
+    }
+    if (inactiveItems.length === 0) {
+        inactiveContainer.innerHTML = '<p class="text-gray-400 text-sm italic">No inactive entries</p>';
+    }
+}
+
+function toggleStatus(type, name, newStatus, position, employeeId) {
+    showLoader("Updating status...");
+
+    const typeMap = { employees: 'employee', engineers: 'engineer', approvers: 'approver' };
+    const updateData = { name: name, status: newStatus };
+    if (position) updateData.position = position;
+    if (employeeId) updateData.employeeId = employeeId;
+
+    google.script.run
+        .withSuccessHandler(() => {
+            const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
+            const list = listMap[type];
+            const item = list.find(i => i.name === name);
+            if (item) item.status = newStatus;
+
+            populateMasterData();
+            showToast("Status updated successfully!");
+            hideLoader();
+        })
+        .withFailureHandler((error) => {
+            showToast("Failed to update status: " + error.message, true);
+            hideLoader();
+        })
+        .updateMasterData(typeMap[type], name, updateData);
+}
+
+function showAddForm(type) {
+    const modal = document.getElementById('add-modal');
+    const titleMap = {
+        employee: 'Add New Employee',
+        engineer: 'Add New Project Engineer',
+        approver: 'Add New Approver'
+    };
+
+    document.getElementById('add-modal-title').textContent = titleMap[type];
+    document.getElementById('add-name').value = '';
+    document.getElementById('add-employee-id').value = '';
+    document.getElementById('add-position').value = '';
+
+    const employeeIdGroup = document.getElementById('add-employee-id-group');
+    const positionGroup = document.getElementById('add-position-group');
+
+    if (type === 'employee') {
+        employeeIdGroup.classList.remove('hidden');
+        positionGroup.classList.add('hidden');
+        document.getElementById('add-position').required = false;
+    } else if (type === 'approver') {
+        employeeIdGroup.classList.add('hidden');
+        positionGroup.classList.remove('hidden');
+        document.getElementById('add-position').required = true;
+    } else {
+        employeeIdGroup.classList.add('hidden');
+        positionGroup.classList.add('hidden');
+        document.getElementById('add-position').required = false;
+    }
+
+    modal.classList.remove('hidden');
+
+    const form = document.getElementById('add-form');
+    form.onsubmit = (e) => {
+        e.preventDefault();
+        handleAddSubmit(type);
+    };
+}
+
+function closeAddModal() {
+    document.getElementById('add-modal').classList.add('hidden');
+}
+
+function handleAddSubmit(type) {
+    const name = document.getElementById('add-name').value.trim();
+    const employeeId = document.getElementById('add-employee-id').value.trim();
+    const position = document.getElementById('add-position').value.trim();
+
+    if (!name) {
+        showToast("Name is required", true);
+        return;
+    }
+
+    if (type === 'approver' && !position) {
+        showToast("Position is required", true);
+        return;
+    }
+
+    showLoader("Adding entry...");
+    closeAddModal();
+
+    const data = { name: name, status: 'ACTIVE' };
+    if (type === 'employee' && employeeId) data.employeeId = employeeId;
+    if (type === 'approver') data.position = position;
+
+    google.script.run
+        .withSuccessHandler(() => {
+            const listMap = { employee: EMPLOYEES_LIST, engineer: PROJECT_ENGINEERS, approver: APPROVERS_LIST };
+            listMap[type].push(data);
+
+            populateMasterData();
+            showToast("Entry added successfully!");
+            hideLoader();
+        })
+        .withFailureHandler((error) => {
+            showToast("Failed to add entry: " + error.message, true);
+            hideLoader();
+        })
+        .saveMasterData(type, data);
+}
+</script>
