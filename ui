@@ -1,0 +1,23 @@
+/**
+ * @description Gets the content for the Dashboard view.
+ * @returns {string} HTML content.
+ */
+function getDashboardView() {
+  return HtmlService.createHtmlOutputFromFile('dashboard').getContent();
+}
+
+/**
+ * @description Gets the content for the New Travel Order form view.
+ * @returns {string} HTML content.
+ */
+function getNewToView() {
+  return HtmlService.createHtmlOutputFromFile('newTo').getContent();
+}
+
+/**
+ * @description Gets the content for the Update Travel Order form view.
+ * @returns {string} HTML content.
+ */
+function getUpdateView() {
+  return HtmlService.createHtmlOutputFromFile('update').getContent();
+}

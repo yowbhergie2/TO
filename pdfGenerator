@@ -1,0 +1,176 @@
+/**
+ * @description Generates the auto-incrementing TO_ID.
+ * @param {Date} datePrepared The date the order was prepared.
+ * @returns {string} The new TO_ID (e.g., RO2.2-2025-JO00001).
+ */
+function generateToId(datePrepared) {
+  const year = datePrepared.getFullYear();
+  const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+  const idColumn = sheet.getRange("A2:A").getValues();
+  
+  let maxSerial = 0;
+  const regex = new RegExp(`${TO_ID_PREFIX}-(\\d{4})${TO_ID_CONNECTOR}(\\d{5})`);
+
+  for (let i = 0; i < idColumn.length; i++) {
+    if (idColumn[i][0]) {
+      const match = idColumn[i][0].match(regex);
+      if (match) {
+        const idYear = parseInt(match[1], 10);
+        const idSerial = parseInt(match[2], 10);
+        if (idYear === year && idSerial > maxSerial) {
+          maxSerial = idSerial;
+        }
+      }
+    }
+  }
+
+  const newSerial = maxSerial + 1;
+  const paddedSerial = String(newSerial).padStart(5, '0');
+  
+  return `${TO_ID_PREFIX}-${year}${TO_ID_CONNECTOR}${paddedSerial}`;
+}
+
+/**
+ * @description Formats the inclusive dates for human-readable display.
+ * @param {Date} startDate The start date.
+ * @param {Date} endDate The end date.
+ * @returns {string} Formatted date string (e.g., "October 5–9, 2025").
+ */
+function formatInclusiveDates(startDate, endDate) {
+  const options = { year: 'numeric', month: 'long', day: 'numeric' };
+  const startStr = startDate.toLocaleDateString('en-US', options);
+  const endStr = endDate.toLocaleDateString('en-US', options);
+
+  if (startStr === endStr) {
+    return startStr; // Single day
+  }
+
+  const startMonth = startDate.getMonth();
+  const startYear = startDate.getFullYear();
+  const endMonth = endDate.getMonth();
+  const endYear = endDate.getFullYear();
+
+  if (startYear !== endYear) {
+    return `${startStr} – ${endStr}`; // "October 30, 2025 – November 2, 2026"
+  }
+  
+  if (startMonth !== endMonth) {
+    return `${startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${startYear} – ${endStr}`; // "October 30, 2025 – November 2, 2025"
+  }
+  
+  // Same month, same year
+  const startDay = startDate.getDate();
+  const endDay = endDate.getDate();
+  return `${startDate.toLocaleDateString('en-US', { month: 'long' })} ${startDay}–${endDay}, ${startYear}`; // "October 5–9, 2025"
+}
+
+/**
+ * @description Creates the PDF, saves it, and links it back to the sheet.
+ * @param {string} toId The TO_ID of the record.
+ * @param {number|null} rowNumber The row number in the sheet. If null, it will be found using toId.
+ * @returns {Object} An object with success status and PDF URL.
+ */
+function generateAndLinkPdf(toId, rowNumber) {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+    const dataRange = sheet.getDataRange();
+    const allData = dataRange.getValues();
+    const headers = allData.shift(); // Get headers (Row 1)
+    
+    // --- Find Row Number if not provided ---
+    if (!rowNumber) {
+      const idColIndex = headers.indexOf("TO_ID");
+      if (idColIndex === -1) {
+        throw new Error("TO_ID column not found in sheet.");
+      }
+      
+      const rowIndex = allData.findIndex(r => r[idColIndex] === toId);
+      if (rowIndex === -1) {
+        throw new Error(`TO_ID '${toId}' not found in sheet.`);
+      }
+      rowNumber = rowIndex + 2; // +1 for 0-based index, +1 for header row
+    }
+    // --- End Find Row ---
+
+    const rowData = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+    
+    // Create a data object from headers and rowData
+    const data = {};
+    headers.forEach((header, i) => {
+      data[header] = rowData[i];
+    });
+
+    const datePrepared = new Date(data.Date_Prepared);
+    const startDate = new Date(data.Inclusive_Start);
+    const endDate = new Date(data.Inclusive_End);
+    const submissionDate = new Date(data.Date_Submission_Travel_Report);
+    
+    // --- Data for PDF Template ---
+    const pdfData = {
+      "{{TO_ID}}": toId,
+      "{{DATE_PREPARED}}": datePrepared.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      "{{INCLUSIVE_DATES}}": formatInclusiveDates(startDate, endDate),
+      "{{DESTINATION}}": data.Destination,
+      "{{PURPOSE}}": data.Purpose,
+      "{{REQUESTED_BY}}": data.Requested_By,
+      "{{REQUESTING_Officer}}": data.Requesting_Officer, // Typo from spec, ensure your template matches
+      "{{DATE_SUBMISSION_REPORT}}": submissionDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    };
+    
+    // Check for common typo: Requesting_Officer
+    if (data.Requesting_Officer) {
+        pdfData["{{REQUESTING_OFFICER}}"] = data.Requesting_Officer;
+    }
+
+
+    // --- PDF File Generation ---
+    const templateFile = DriveApp.getFileById(PDF_TEMPLATE_DOC_ID);
+    const targetFolder = DriveApp.getFolderById(TARGET_PDF_FOLDER_ID);
+    
+    // Make a copy of the template
+    const newDocName = `TO - ${toId} - ${data.Requested_By}`;
+    const newDocFile = templateFile.makeCopy(newDocName, targetFolder);
+    const newDoc = DocumentApp.openById(newDocFile.getId());
+    const body = newDoc.getBody();
+    
+    // Replace all placeholders
+    for (const [placeholder, value] of Object.entries(pdfData)) {
+      body.replaceText(placeholder, value || 'N/A');
+    }
+    
+    newDoc.saveAndClose();
+    
+    // Create PDF from the new doc
+    const pdfBlob = newDocFile.getBlob().getAs('application/pdf');
+    const pdfFile = targetFolder.createFile(pdfBlob).setName(newDocName + ".pdf");
+    
+    // Delete the temporary Google Doc
+    DriveApp.getFileById(newDocFile.getId()).setTrashed(true);
+    
+    const pdfUrl = pdfFile.getUrl();
+    
+    // --- Update Sheet with PDF Link and Status ---
+    const pdfLinkCol = headers.indexOf("PDF_Link") + 1;
+    const statusCol = headers.indexOf("Status") + 1;
+    
+    sheet.getRange(rowNumber, pdfLinkCol).setValue(pdfUrl);
+    sheet.getRange(rowNumber, statusCol).setValue("Completed");
+    
+    return { success: true, pdfUrl: pdfUrl };
+
+  } catch (e) {
+    Logger.log(e);
+    // Try to update status to "PDF Error"
+    try {
+      if (rowNumber) { // Only if we found a row number
+        const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const statusCol = headers.indexOf("Status") + 1;
+        sheet.getRange(rowNumber, statusCol).setValue("PDF Error");
+      }
+    } catch (err) {}
+
+    return { success: false, error: e.message };
+  }
+}
+

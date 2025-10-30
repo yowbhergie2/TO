@@ -1,0 +1,169 @@
+<div class="form-card max-w-6xl mx-auto">
+    <form id="new-to-form" autocomplete="off">
+        <div class="form-header">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <div class="w-16 h-16 bg-white bg-opacity-20 rounded-2xl flex items-center justify-center mr-4 shadow-lg">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold text-white">New Travel Order</h1>
+                        <p class="text-indigo-100 mt-1">Create a new travel order entry</p>
+                    </div>
+                </div>
+                <div class="hidden lg:flex items-center gap-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg px-4 py-2">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="text-white text-sm font-medium">All fields are required</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="p-8 space-y-8">
+            <div class="form-section">
+                <div class="section-header">
+                    <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                    <h2 class="section-title">Date Information</h2>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="input-group">
+                        <label for="datePrepared" class="input-label">Date Prepared</label>
+                        <input type="text" id="datePrepared" name="datePrepared" required class="input-field" placeholder="YYYY-MM-DD">
+                        <p id="date-prepared-display" class="text-xs text-indigo-600 mt-1 font-medium"></p>
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="inclusiveDates" class="input-label">Inclusive Dates (Start to End)</label>
+                        <input type="text" id="inclusiveDates" name="inclusiveDates" required disabled class="input-field disabled:bg-gray-100 disabled:cursor-not-allowed" placeholder="Select date range...">
+                        <p id="inclusive-dates-display" class="text-xs text-indigo-600 mt-1 font-medium"></p>
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="dateSubmission" class="input-label">Submission Date</label>
+                        <input type="text" id="dateSubmission" name="dateSubmission" required disabled class="input-field disabled:bg-gray-100 disabled:cursor-not-allowed" placeholder="Auto-fills">
+                        <p id="submission-date-display" class="text-xs text-indigo-600 mt-1 font-medium"></p>
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-header">
+                    <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                    </svg>
+                    <h2 class="section-title">Employees Travelling</h2>
+                </div>
+                <div id="employees-container" class="space-y-3 mb-3">
+                    <div class="employee-row flex gap-2">
+                        <select class="employee-select flex-1 input-field" required>
+                            <option value="">Select Employee</option>
+                        </select>
+                        <button type="button" class="remove-employee-btn hidden bg-red-50 text-red-600 px-4 rounded-lg hover:bg-red-100 transition-all">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <button type="button" id="add-employee-btn" class="btn-secondary inline-flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Add Another Employee
+                </button>
+            </div>
+
+            <div class="form-section">
+                <div class="section-header">
+                    <svg class="w-5 h-5 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    <h2 class="section-title">Location & Travel Details</h2>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="input-group">
+                        <label for="destination" class="input-label">Destination</label>
+                        <input type="text" id="destination" name="destination" required class="input-field" value="DPWH - REGIONAL OFFICE II">
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+                    
+                    <div class="input-group relative">
+                        <label for="station" class="input-label">Station</label>
+                        <input type="text" id="station" name="station" required class="input-field" autocomplete="off">
+                        <div id="station-suggestions" class="suggestions-dropdown hidden"></div>
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="modeOfTravel" class="input-label">Mode of Travel</label>
+                        <select id="modeOfTravel" name="modeOfTravel" required class="input-field">
+                            <option value="">Select Mode of Travel</option>
+                            <option value="GOVERNMENT VEHICLE">Government Vehicle</option>
+                            <option value="PRIVATE VEHICLE">Private Vehicle</option>
+                            <option value="PUBLIC TRANSPORT">Public Transport</option>
+                            <option value="AIR TRAVEL">Air Travel</option>
+                            <option value="SEA TRAVEL">Sea Travel</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="requestingOfficer" class="input-label">Requesting Officer</label>
+                        <select id="requestingOfficer" name="requestingOfficer" required class="input-field">
+                            <option value="">Select Project Engineer</option>
+                        </select>
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+                </div>
+
+                <div id="otherModeContainer" class="hidden mt-6">
+                    <div class="input-group">
+                        <label for="otherMode" class="input-label">Specify Other Mode of Travel</label>
+                        <input type="text" id="otherMode" name="otherMode" class="input-field" placeholder="Please specify...">
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-header">
+                    <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <h2 class="section-title">Purpose of Travel</h2>
+                </div>
+                <div class="input-group relative">
+                    <label for="purpose" class="input-label">Purpose</label>
+                    <textarea id="purpose" name="purpose" rows="4" required class="input-field" placeholder="Enter the purpose of travel..." autocomplete="off"></textarea>
+                    <div id="purpose-suggestions" class="suggestions-dropdown hidden"></div>
+                    <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="px-8 py-6 bg-gradient-to-r from-gray-50 to-gray-100 flex justify-end gap-3 border-t border-gray-200">
+            <button type="button" id="cancel-new-to-btn" class="btn-cancel inline-flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+                Cancel
+            </button>
+            <button type="submit" id="save-to-btn" class="btn-primary inline-flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Save and Generate PDF
+            </button>
+        </div>
+    </form>
+</div>

@@ -1,0 +1,1631 @@
+<script>
+let LATEST_DATE_PREPARED = null;
+let ALL_TRAVEL_ORDERS = [];
+let PROJECT_ENGINEERS = [];
+let EMPLOYEES_LIST = [];
+let APPROVERS_LIST = [];
+let RECENT_PURPOSES = [];
+let RECENT_STATIONS = [];
+let CURRENT_VIEW = 'dashboard';
+
+const getTodayDate = () => {
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    return today.toISOString().split('T')[0];
+};
+
+const addDays = (date, days) => {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+};
+
+const formatToYyyyMmDd = (isoDate) => {
+    if (!isoDate) return '';
+    const date = new Date(isoDate);
+    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+    return date.toISOString().split('T')[0];
+};
+
+const formatInclusiveDates = (startStr, endStr) => {
+    if (!startStr || !endStr) return 'N/A';
+    try {
+        const startDate = new Date(startStr);
+        const endDate = new Date(endStr);
+        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+        
+        const startLocale = startDate.toLocaleDateString('en-US', options);
+        const endLocale = endDate.toLocaleDateString('en-US', options);
+
+        if (startLocale === endLocale) return startLocale;
+
+        const startMonth = startDate.getMonth();
+        const startYear = startDate.getFullYear();
+        const endMonth = endDate.getMonth();
+        const endYear = endDate.getFullYear();
+
+        if (startYear !== endYear) {
+            return `${startLocale} – ${endLocale}`;
+        }
+        if (startMonth !== endMonth) {
+            return `${startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} – ${endLocale}`;
+        }
+        
+        const startDay = startDate.getDate();
+        const endDay = endDate.getDate();
+        return `${startDate.toLocaleDateString('en-US', { month: 'long' })} ${startDay}–${endDay}, ${startYear}`;
+    } catch (e) {
+        console.error("Error formatting dates:", startStr, endStr, e);
+        return "Invalid Date";
+    }
+};
+
+const formatDateForDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const showLoader = (message = "Loading...") => {
+    const loader = document.getElementById('loader');
+    const loaderMessage = document.getElementById('loader-message');
+    if (loader && loaderMessage) {
+        loaderMessage.textContent = message;
+        loader.style.display = 'flex';
+    }
+};
+
+const hideLoader = () => {
+    const loader = document.getElementById('loader');
+    if (loader) {
+        loader.style.display = 'none';
+    }
+};
+
+const showToast = (message, isError = false) => {
+    const toast = document.getElementById('toast');
+    const toastMessage = document.getElementById('toast-message');
+    
+    if (toast && toastMessage) {
+        toastMessage.textContent = message;
+        toast.className = 'fixed bottom-5 right-5 text-white py-3 px-6 rounded-lg shadow-xl transition-transform duration-300 ease-out z-40';
+        toast.classList.add(isError ? 'bg-red-500' : 'bg-green-500', 'show');
+        
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+};
+
+const showFormError = (inputId, message) => {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const errorMsg = input.nextElementSibling;
+    if (errorMsg?.classList.contains('form-error-msg')) {
+        input.classList.add('invalid');
+        errorMsg.textContent = message;
+        errorMsg.classList.remove('hidden');
+    }
+};
+
+const clearFormErrors = (formId) => {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    form.querySelectorAll('.form-error-msg').forEach(el => el.classList.add('hidden'));
+    form.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
+};
+
+const updateNavActiveState = (viewName) => {
+    CURRENT_VIEW = viewName;
+    
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.toggle('active', link.id === `nav-${viewName}`);
+    });
+    
+    document.querySelectorAll('.nav-link-mobile').forEach(link => {
+        link.classList.toggle('active', link.id === `nav-${viewName}-mobile`);
+    });
+
+    const mobileMenu = document.getElementById('mobile-menu');
+    if (mobileMenu) {
+        mobileMenu.classList.add('hidden');
+    }
+};
+
+function setupNavListeners() {
+    const navItems = [
+        { id: 'nav-dashboard', view: 'dashboard' },
+        { id: 'nav-travel-orders', view: 'travel-orders' },
+        { id: 'nav-new-to', view: 'new' },
+        { id: 'nav-master-data', view: 'master-data' },
+        { id: 'nav-dashboard-mobile', view: 'dashboard' },
+        { id: 'nav-travel-orders-mobile', view: 'travel-orders' },
+        { id: 'nav-new-to-mobile', view: 'new' },
+        { id: 'nav-master-data-mobile', view: 'master-data' }
+    ];
+
+    navItems.forEach(({ id, view }) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (CURRENT_VIEW !== view) {
+                    if (view === 'dashboard') loadDashboardView();
+                    else if (view === 'travel-orders') loadTravelOrdersView();
+                    else if (view === 'new') loadNewToView();
+                    else if (view === 'master-data') loadMasterDataView();
+                }
+            });
+        }
+    });
+
+    const mobileMenuBtn = document.getElementById('mobile-menu-button');
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', () => {
+            const menu = document.getElementById('mobile-menu');
+            if (menu) {
+                menu.classList.toggle('hidden');
+                document.querySelectorAll('#mobile-menu-button svg').forEach(svg => svg.classList.toggle('hidden'));
+            }
+        });
+    }
+}
+
+window.addEventListener('load', () => {
+    console.log("=== SYSTEM INITIALIZING ===");
+    showLoader("Initializing System...");
+    
+    setupNavListeners();
+    
+    google.script.run
+        .withSuccessHandler(onInitialLoadSuccess)
+        .withFailureHandler(onInitialLoadFailure)
+        .getInitialData();
+});
+
+function onInitialLoadSuccess(data) {
+    console.log("=== INITIAL DATA RECEIVED ===");
+    console.log("Data:", data);
+    
+    if (data.error) {
+        console.error("Data contains error:", data.error);
+        onInitialLoadFailure({ message: data.error });
+        return;
+    }
+    
+    LATEST_DATE_PREPARED = data.latestDate ? new Date(data.latestDate) : null;
+    ALL_TRAVEL_ORDERS = data.travelOrders || [];
+    PROJECT_ENGINEERS = data.projectEngineers || [];
+    EMPLOYEES_LIST = data.employees || [];
+    APPROVERS_LIST = data.approvers || [];
+    RECENT_PURPOSES = data.recentPurposes || [];
+    RECENT_STATIONS = data.recentStations || [];
+    
+    console.log("Travel Orders:", ALL_TRAVEL_ORDERS.length);
+    console.log("Employees:", EMPLOYEES_LIST.length);
+    console.log("Project Engineers:", PROJECT_ENGINEERS.length);
+    console.log("Approvers:", APPROVERS_LIST.length);
+    
+    loadDashboardView();
+}
+
+function onInitialLoadFailure(error) {
+    console.error("=== INITIAL LOAD FAILED ===");
+    console.error("Error:", error);
+    hideLoader();
+    showToast("Failed to load data: " + error.message, true);
+}
+
+function loadDashboardView() {
+    console.log("=== LOADING DASHBOARD VIEW ===");
+    showLoader("Loading Dashboard...");
+    updateNavActiveState('dashboard');
+
+    google.script.run
+        .withSuccessHandler(html => {
+            console.log("Dashboard HTML received, length:", html.length);
+            document.getElementById('content-area').innerHTML = html;
+            
+            setTimeout(() => {
+                console.log("Calling loadDashboardAnalytics with ALL_TRAVEL_ORDERS:", ALL_TRAVEL_ORDERS.length);
+                loadDashboardAnalyticsDirectly();
+            }, 500);
+        })
+        .withFailureHandler(err => {
+            console.error("Failed to load dashboard HTML:", err);
+            showToast("Failed to load dashboard: " + err.message, true);
+            hideLoader();
+        })
+        .getDashboardView();
+}
+
+function loadDashboardAnalyticsDirectly() {
+    console.log("=== LOADING ANALYTICS DIRECTLY ===");
+    
+    const analyticsData = calculateAnalytics(ALL_TRAVEL_ORDERS);
+    console.log("Analytics calculated:", analyticsData);
+    
+    setTimeout(() => {
+        populateDashboardAnalytics(analyticsData);
+    }, 200);
+}
+
+function calculateAnalytics(allOrders) {
+    console.log("Calculating analytics for", allOrders.length, "orders");
+    
+    const totalOrders = allOrders.length;
+    const completedOrders = allOrders.filter(o => o.Status === "Completed").length;
+    const pendingOrders = allOrders.filter(o => o.Status === "Pending PDF").length;
+    const errorOrders = allOrders.filter(o => o.Status === "PDF Error").length;
+
+    const employeeStats = {};
+    allOrders.forEach(order => {
+        const employees = Array.isArray(order.Employees) ? order.Employees : [order.Employees];
+        employees.forEach(emp => {
+            if (emp) {
+                employeeStats[emp] = (employeeStats[emp] || 0) + 1;
+            }
+        });
+    });
+
+    const topEmployees = Object.entries(employeeStats)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+
+    const monthlyStats = {};
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthlyStats[key] = 0;
+    }
+
+    allOrders.forEach(order => {
+        if (order.Date_Prepared) {
+            const date = new Date(order.Date_Prepared);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            if (monthlyStats.hasOwnProperty(key)) {
+                monthlyStats[key]++;
+            }
+        }
+    });
+
+    const monthlyData = Object.entries(monthlyStats).map(([month, count]) => ({ month, count }));
+
+    const destinationStats = {};
+    allOrders.forEach(order => {
+        if (order.Destination) {
+            destinationStats[order.Destination] = (destinationStats[order.Destination] || 0) + 1;
+        }
+    });
+
+    const topDestinations = Object.entries(destinationStats)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+    const modeStats = {};
+    allOrders.forEach(order => {
+        if (order.Mode_of_Travel) {
+            modeStats[order.Mode_of_Travel] = (modeStats[order.Mode_of_Travel] || 0) + 1;
+        }
+    });
+
+    const travelModes = Object.entries(modeStats)
+        .map(([mode, count]) => ({ mode, count }))
+        .sort((a, b) => b.count - a.count);
+
+    const purposeStats = {};
+    allOrders.forEach(order => {
+        if (order.Purpose) {
+            purposeStats[order.Purpose] = (purposeStats[order.Purpose] || 0) + 1;
+        }
+    });
+
+    const topPurposes = Object.entries(purposeStats)
+        .map(([purpose, count]) => ({ purpose, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+    const recentOrders = allOrders
+        .sort((a, b) => {
+            const dateA = a.Created_Date ? new Date(a.Created_Date) : new Date(0);
+            const dateB = b.Created_Date ? new Date(b.Created_Date) : new Date(0);
+            return dateB - dateA;
+        })
+        .slice(0, 5);
+
+    return {
+        summary: {
+            total: totalOrders,
+            completed: completedOrders,
+            pending: pendingOrders,
+            error: errorOrders
+        },
+        employeeStats: topEmployees,
+        monthlyStats: monthlyData,
+        destinationStats: topDestinations,
+        travelModes: travelModes,
+        purposeStats: topPurposes,
+        recentOrders: recentOrders
+    };
+}
+
+function populateDashboardAnalytics(data) {
+    console.log("=== POPULATING DASHBOARD ANALYTICS ===");
+    console.log("Data to populate:", data);
+    
+    const analyticsLoading = document.getElementById('analytics-loading');
+    const analyticsContent = document.getElementById('analytics-content');
+
+    if (!analyticsLoading || !analyticsContent) {
+        console.error('Dashboard analytics containers not found!');
+        console.log('Available elements:', document.getElementById('content-area')?.innerHTML.substring(0, 200));
+        hideLoader();
+        return;
+    }
+
+    analyticsLoading.classList.add('hidden');
+    analyticsContent.classList.remove('hidden');
+
+    console.log("Setting summary stats...");
+    const statTotal = document.getElementById('stat-total');
+    const statCompleted = document.getElementById('stat-completed');
+    const statPending = document.getElementById('stat-pending');
+    const statError = document.getElementById('stat-error');
+    
+    if (statTotal) statTotal.textContent = data.summary.total;
+    if (statCompleted) statCompleted.textContent = data.summary.completed;
+    if (statPending) statPending.textContent = data.summary.pending;
+    if (statError) statError.textContent = data.summary.error;
+
+    console.log("Populating employee stats...");
+    const employeeStatsDiv = document.getElementById('employee-stats');
+    if (employeeStatsDiv) {
+        employeeStatsDiv.innerHTML = '';
+        if (data.employeeStats && data.employeeStats.length > 0) {
+            const maxCount = data.employeeStats[0].count;
+            data.employeeStats.forEach(emp => {
+                const percentage = maxCount > 0 ? (emp.count / maxCount) * 100 : 0;
+                employeeStatsDiv.innerHTML += `
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700 flex-1 truncate">${emp.name}</span>
+                        <span class="text-sm font-bold text-gray-900 ml-2">${emp.count}</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2 mb-3">
+                        <div class="bg-gradient-to-r from-pink-500 to-pink-600 h-2 rounded-full transition-all" style="width: ${percentage}%"></div>
+                    </div>
+                `;
+            });
+        } else {
+            employeeStatsDiv.innerHTML = '<p class="text-gray-500 text-sm">No data available</p>';
+        }
+    }
+
+    console.log("Populating monthly chart...");
+    const monthlyChartDiv = document.getElementById('monthly-chart');
+    if (monthlyChartDiv) {
+        monthlyChartDiv.innerHTML = '';
+        if (data.monthlyStats && data.monthlyStats.length > 0) {
+            const maxMonthly = Math.max(...data.monthlyStats.map(m => m.count), 1);
+            data.monthlyStats.forEach(month => {
+                const percentage = (month.count / maxMonthly) * 100;
+                const [year, monthNum] = month.month.split('-');
+                const monthName = new Date(year, monthNum - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                monthlyChartDiv.innerHTML += `
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700 w-16">${monthName}</span>
+                        <div class="flex-1 mx-3">
+                            <div class="w-full bg-gray-200 rounded-full h-6">
+                                <div class="bg-gradient-to-r from-purple-500 to-purple-600 h-6 rounded-full flex items-center justify-end pr-2 transition-all" style="width: ${percentage}%">
+                                    ${month.count > 0 ? '<span class="text-white text-xs font-bold">' + month.count + '</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            monthlyChartDiv.innerHTML = '<p class="text-gray-500 text-sm">No data available</p>';
+        }
+    }
+
+    console.log("Populating destination stats...");
+    const destinationStatsDiv = document.getElementById('destination-stats');
+    if (destinationStatsDiv) {
+        destinationStatsDiv.innerHTML = '';
+        if (data.destinationStats && data.destinationStats.length > 0) {
+            data.destinationStats.forEach((dest, index) => {
+                const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-cyan-500'];
+                const color = colors[index % colors.length];
+                destinationStatsDiv.innerHTML += `
+                    <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
+                        <div class="flex items-center flex-1">
+                            <div class="w-8 h-8 ${color} rounded-full flex items-center justify-center text-white font-bold text-sm mr-3">
+                                ${dest.count}
+                            </div>
+                            <span class="text-sm text-gray-700 truncate">${dest.name}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            destinationStatsDiv.innerHTML = '<p class="text-gray-500 text-sm">No data available</p>';
+        }
+    }
+
+    console.log("Populating mode stats...");
+    const modeStatsDiv = document.getElementById('mode-stats');
+    if (modeStatsDiv) {
+        modeStatsDiv.innerHTML = '';
+        if (data.travelModes && data.travelModes.length > 0) {
+            data.travelModes.forEach((mode, index) => {
+                const colors = ['bg-teal-500', 'bg-green-500', 'bg-emerald-500', 'bg-cyan-500'];
+                const color = colors[index % colors.length];
+                modeStatsDiv.innerHTML += `
+                    <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
+                        <div class="flex items-center flex-1">
+                            <div class="w-8 h-8 ${color} rounded-full flex items-center justify-center text-white font-bold text-sm mr-3">
+                                ${mode.count}
+                            </div>
+                            <span class="text-sm text-gray-700 truncate">${mode.mode}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            modeStatsDiv.innerHTML = '<p class="text-gray-500 text-sm">No data available</p>';
+        }
+    }
+
+    console.log("Populating purpose stats...");
+    const purposeStatsDiv = document.getElementById('purpose-stats');
+    if (purposeStatsDiv) {
+        purposeStatsDiv.innerHTML = '';
+        if (data.purposeStats && data.purposeStats.length > 0) {
+            data.purposeStats.forEach((purpose, index) => {
+                const colors = ['bg-orange-500', 'bg-amber-500', 'bg-yellow-500', 'bg-red-500', 'bg-rose-500'];
+                const color = colors[index % colors.length];
+                purposeStatsDiv.innerHTML += `
+                    <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
+                        <div class="flex items-center flex-1">
+                            <div class="w-8 h-8 ${color} rounded-full flex items-center justify-center text-white font-bold text-sm mr-3">
+                                ${purpose.count}
+                            </div>
+                            <span class="text-sm text-gray-700 truncate">${purpose.purpose}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            purposeStatsDiv.innerHTML = '<p class="text-gray-500 text-sm">No data available</p>';
+        }
+    }
+
+    console.log("Populating recent orders...");
+    const recentOrdersDiv = document.getElementById('recent-orders');
+    if (recentOrdersDiv) {
+        recentOrdersDiv.innerHTML = '';
+        if (data.recentOrders && data.recentOrders.length > 0) {
+            data.recentOrders.forEach(order => {
+                const employees = Array.isArray(order.Employees) ? order.Employees.join(', ') : order.Employees;
+                const statusColor = order.Status === 'Completed' ? 'bg-green-100 text-green-800' :
+                                  order.Status === 'PDF Error' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800';
+                recentOrdersDiv.innerHTML += `
+                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-bold text-indigo-600">${order.TO_ID}</span>
+                                <span class="text-xs px-2 py-1 rounded-full font-medium ${statusColor}">${order.Status}</span>
+                            </div>
+                            <p class="text-sm text-gray-700 mb-1">${employees}</p>
+                            <p class="text-xs text-gray-500">${formatInclusiveDates(order.Inclusive_Start, order.Inclusive_End)}</p>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            recentOrdersDiv.innerHTML = '<p class="text-gray-500 text-sm">No recent orders</p>';
+        }
+    }
+
+    console.log("Dashboard analytics populated successfully!");
+    hideLoader();
+}
+
+function populateDashboardTable(data) {
+    console.log("Populating dashboard table with", data.length, "records");
+    
+    const tableBody = document.getElementById('to-table-body');
+    const template = document.getElementById('table-row-template');
+    const emptyState = document.getElementById('dashboard-empty-state');
+    const totalOrders = document.getElementById('total-orders');
+    
+    if (!tableBody || !template) {
+        console.error("Table elements not found");
+        return;
+    }
+    
+    tableBody.innerHTML = '';
+    
+    if (!data || data.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (totalOrders) totalOrders.textContent = '0';
+        return;
+    }
+    
+    if (emptyState) emptyState.classList.add('hidden');
+    if (totalOrders) totalOrders.textContent = data.length;
+
+    data.sort((a, b) => new Date(b.Created_Date) - new Date(a.Created_Date));
+
+    data.forEach(item => {
+        try {
+            const clone = template.content.cloneNode(true);
+            const row = clone.querySelector('tr');
+            
+            row.dataset.toid = item.TO_ID;
+            clone.querySelector('.to-id').textContent = item.TO_ID;
+            clone.querySelector('.inclusive-dates').textContent = formatInclusiveDates(item.Inclusive_Start, item.Inclusive_End);
+            
+            let employeesDisplay = item.Employees;
+            if (Array.isArray(employeesDisplay)) {
+                employeesDisplay = employeesDisplay.join(', ');
+            }
+            clone.querySelector('.employees').textContent = employeesDisplay;
+            
+            const statusSpan = clone.querySelector('.status');
+            statusSpan.textContent = item.Status;
+            statusSpan.classList.add(
+                item.Status === 'Completed' ? 'status-completed' :
+                item.Status === 'PDF Error' ? 'status-error' : 'status-pending'
+            );
+
+            const viewBtn = clone.querySelector('.view-btn');
+            const editBtn = clone.querySelector('.edit-btn');
+            const pdfLink = clone.querySelector('.pdf-link');
+            const pdfBtn = clone.querySelector('.pdf-btn');
+            
+            viewBtn.dataset.toid = item.TO_ID;
+            editBtn.dataset.toid = item.TO_ID;
+            pdfBtn.dataset.toid = item.TO_ID;
+
+            if (item.PDF_Link) {
+                pdfLink.href = item.PDF_Link;
+                pdfLink.classList.remove('hidden');
+                pdfBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>Re-Gen';
+            } else {
+                pdfLink.classList.add('hidden');
+            }
+            
+            tableBody.appendChild(clone);
+        } catch (err) {
+            console.error("Error populating row:", item.TO_ID, err);
+        }
+    });
+    
+    console.log("Table populated successfully");
+}
+
+function setupDashboardListeners() {
+    const table = document.getElementById('to-table');
+    if (!table) {
+        console.error("Table not found!");
+        return;
+    }
+    
+    table.addEventListener('click', (e) => {
+        const viewBtn = e.target.closest('.view-btn');
+        const editBtn = e.target.closest('.edit-btn');
+        const pdfBtn = e.target.closest('.pdf-btn');
+        
+        if (viewBtn) {
+            e.preventDefault();
+            showViewModal(viewBtn.dataset.toid);
+        } else if (editBtn) {
+            e.preventDefault();
+            loadUpdateView(editBtn.dataset.toid);
+        } else if (pdfBtn) {
+            e.preventDefault();
+            handleGeneratePdf(pdfBtn.dataset.toid);
+        }
+    });
+
+    const searchInput = document.getElementById('dashboard-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredOrders = ALL_TRAVEL_ORDERS.filter(order => {
+                return Object.values(order).some(val => {
+                    if (val === null || val === undefined) return false;
+                    return val.toString().toLowerCase().includes(searchTerm);
+                });
+            });
+            populateDashboardTable(filteredOrders);
+        });
+    }
+}
+
+function showViewModal(toId) {
+    const order = ALL_TRAVEL_ORDERS.find(o => o.TO_ID === toId);
+    if (!order) return;
+
+    const modal = document.getElementById('view-modal');
+    const content = document.getElementById('view-modal-content');
+
+    let employeesDisplay = order.Employees;
+    if (Array.isArray(employeesDisplay)) {
+        employeesDisplay = employeesDisplay.join(', ');
+    }
+
+    content.innerHTML = `
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-t-2xl">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-bold text-white">${order.TO_ID}</h2>
+                    <p class="text-indigo-100 mt-1">Travel Order Details</p>
+                </div>
+                <button onclick="closeViewModal()" class="text-white hover:text-indigo-100">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="p-6">
+            <div class="detail-row">
+                <span class="detail-label">Date Prepared:</span>
+                <span class="detail-value">${formatDateForDisplay(order.Date_Prepared)}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Inclusive Dates:</span>
+                <span class="detail-value">${formatInclusiveDates(order.Inclusive_Start, order.Inclusive_End)}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Employees:</span>
+                <span class="detail-value">${employeesDisplay}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Destination:</span>
+                <span class="detail-value">${order.Destination}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Station:</span>
+                <span class="detail-value">${order.Station}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Purpose:</span>
+                <span class="detail-value">${order.Purpose}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Mode of Travel:</span>
+                <span class="detail-value">${order.Mode_of_Travel}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Requesting Officer:</span>
+                <span class="detail-value">${order.Requesting_Officer}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Submission Date:</span>
+                <span class="detail-value">${formatDateForDisplay(order.Date_Submission_Travel_Report)}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Status:</span>
+                <span class="detail-value">
+                    <span class="status-badge ${order.Status === 'Completed' ? 'status-completed' : order.Status === 'PDF Error' ? 'status-error' : 'status-pending'}">
+                        ${order.Status}
+                    </span>
+                </span>
+            </div>
+            ${order.PDF_Link ? `
+            <div class="detail-row">
+                <span class="detail-label">PDF:</span>
+                <span class="detail-value">
+                    <a href="${order.PDF_Link}" target="_blank" class="text-indigo-600 hover:text-indigo-800 font-medium">
+                        View PDF Document
+                    </a>
+                </span>
+            </div>` : ''}
+        </div>
+        <div class="px-6 py-4 bg-gray-50 rounded-b-2xl flex justify-end gap-3">
+            <button onclick="closeViewModal()" class="btn-cancel inline-flex items-center">Close</button>
+            <button onclick="closeViewModal(); loadUpdateView('${order.TO_ID}')" class="btn-primary inline-flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                </svg>
+                Edit
+            </button>
+        </div>
+    `;
+
+    modal.classList.remove('hidden');
+}
+
+function closeViewModal() {
+    document.getElementById('view-modal').classList.add('hidden');
+}
+
+function handleGeneratePdf(toId) {
+    showLoader("Generating PDF...");
+    
+    google.script.run
+        .withSuccessHandler(onPdfSuccess)
+        .withFailureHandler(onPdfFailure)
+        .generateAndLinkPdf(toId, null);
+}
+
+function onPdfSuccess(result) {
+    if (result.success) {
+        showToast("PDF Generated Successfully!");
+        window.open(result.pdfUrl, '_blank');
+        
+        showLoader("Refreshing data...");
+        google.script.run
+            .withSuccessHandler(data => {
+                if (data.error) {
+                    onInitialLoadFailure({ message: data.error });
+                    return;
+                }
+                LATEST_DATE_PREPARED = data.latestDate ? new Date(data.latestDate) : null;
+                ALL_TRAVEL_ORDERS = data.travelOrders;
+                PROJECT_ENGINEERS = data.projectEngineers || [];
+                EMPLOYEES_LIST = data.employees || [];
+                APPROVERS_LIST = data.approvers || [];
+                RECENT_PURPOSES = data.recentPurposes || [];
+                RECENT_STATIONS = data.recentStations || [];
+                
+                if (CURRENT_VIEW === 'travel-orders') {
+                    populateDashboardTable(ALL_TRAVEL_ORDERS);
+                }
+                hideLoader();
+            })
+            .withFailureHandler(onInitialLoadFailure)
+            .getInitialData();
+    } else {
+        onPdfFailure({ message: result.error });
+    }
+}
+
+function onPdfFailure(error) {
+    console.error("PDF Generation Error:", error);
+    showToast("PDF Generation Failed: " + error.message, true);
+    hideLoader();
+}
+
+function populateEmployeeDropdown(selectElement, excludeValues = []) {
+    selectElement.innerHTML = '<option value="">Select Employee</option>';
+    EMPLOYEES_LIST
+        .filter(emp => emp.status === 'ACTIVE' && !excludeValues.includes(emp.name))
+        .forEach(emp => {
+            const option = document.createElement('option');
+            option.value = emp.name;
+            option.textContent = emp.name;
+            selectElement.appendChild(option);
+        });
+}
+
+function populateProjectEngineerDropdown(selectElement) {
+    selectElement.innerHTML = '<option value="">Select Project Engineer</option>';
+    PROJECT_ENGINEERS
+        .filter(pe => pe.status === 'ACTIVE')
+        .forEach(pe => {
+            const option = document.createElement('option');
+            option.value = pe.name;
+            option.textContent = pe.name;
+            selectElement.appendChild(option);
+        });
+}
+
+function getSelectedEmployees(containerId) {
+    const selects = document.querySelectorAll(`#${containerId} .employee-select`);
+    return Array.from(selects).map(sel => sel.value).filter(val => val);
+}
+
+function updateAllEmployeeDropdowns(containerId) {
+    const selectedEmployees = getSelectedEmployees(containerId);
+    const selects = document.querySelectorAll(`#${containerId} .employee-select`);
+    
+    selects.forEach(select => {
+        const currentValue = select.value;
+        const excludeValues = selectedEmployees.filter(emp => emp !== currentValue);
+        populateEmployeeDropdown(select, excludeValues);
+        select.value = currentValue;
+    });
+}
+
+function createEmployeeRow(container, isUpdate = false) {
+    const row = document.createElement('div');
+    row.className = 'employee-row flex gap-2';
+    
+    const select = document.createElement('select');
+    select.className = 'employee-select flex-1 input-field';
+    select.required = true;
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'remove-employee-btn bg-red-50 text-red-600 px-4 rounded-lg hover:bg-red-100 transition-all';
+    removeBtn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+    </svg>`;
+    
+    select.addEventListener('change', () => {
+        updateAllEmployeeDropdowns(container.id);
+    });
+    
+    removeBtn.addEventListener('click', () => {
+        row.remove();
+        updateEmployeeRemoveButtons(container);
+        updateAllEmployeeDropdowns(container.id);
+    });
+    
+    row.appendChild(select);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+    
+    updateAllEmployeeDropdowns(container.id);
+    updateEmployeeRemoveButtons(container);
+    
+    return row;
+}
+
+function updateEmployeeRemoveButtons(container) {
+    const rows = container.querySelectorAll('.employee-row');
+    rows.forEach(row => {
+        const removeBtn = row.querySelector('.remove-employee-btn');
+        removeBtn.classList.toggle('hidden', rows.length === 1);
+    });
+}
+
+let fpDatePrepared, fpInclusive, fpSubmission;
+let fpUpdateDatePrepared, fpUpdateInclusive, fpUpdateSubmission;
+
+function setupSuggestions(inputId, suggestionsId, dataArray) {
+    const input = document.getElementById(inputId);
+    const suggestionsDiv = document.getElementById(suggestionsId);
+    
+    if (!input || !suggestionsDiv) return;
+
+    input.addEventListener('focus', () => {
+        if (dataArray.length > 0) {
+            suggestionsDiv.innerHTML = '';
+            dataArray.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+                div.textContent = item;
+                div.addEventListener('click', () => {
+                    input.value = item;
+                    suggestionsDiv.classList.add('hidden');
+                });
+                suggestionsDiv.appendChild(div);
+            });
+            suggestionsDiv.classList.remove('hidden');
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => suggestionsDiv.classList.add('hidden'), 200);
+    });
+
+    input.addEventListener('input', () => {
+        const searchTerm = input.value.toLowerCase();
+        const filtered = dataArray.filter(item => item.toLowerCase().includes(searchTerm));
+        
+        if (filtered.length > 0 && input.value) {
+            suggestionsDiv.innerHTML = '';
+            filtered.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+                div.textContent = item;
+                div.addEventListener('click', () => {
+                    input.value = item;
+                    suggestionsDiv.classList.add('hidden');
+                });
+                suggestionsDiv.appendChild(div);
+            });
+            suggestionsDiv.classList.remove('hidden');
+        } else {
+            suggestionsDiv.classList.add('hidden');
+        }
+    });
+}
+
+function setupNewToFormListeners() {
+    const form = document.getElementById('new-to-form');
+    form.addEventListener('submit', handleNewToSubmit);
+    
+    document.getElementById('cancel-new-to-btn').addEventListener('click', (e) => {
+        e.preventDefault();
+        loadDashboardView();
+    });
+
+    const employeesContainer = document.getElementById('employees-container');
+    const firstSelect = employeesContainer.querySelector('.employee-select');
+    populateEmployeeDropdown(firstSelect);
+    
+    firstSelect.addEventListener('change', () => {
+        updateAllEmployeeDropdowns('employees-container');
+    });
+    
+    populateProjectEngineerDropdown(document.getElementById('requestingOfficer'));
+    
+    document.getElementById('add-employee-btn').addEventListener('click', () => {
+        createEmployeeRow(employeesContainer);
+    });
+    
+    setupModeOfTravelListener('modeOfTravel', 'otherModeContainer', 'otherMode');
+    setupDatePickers();
+    updateEmployeeRemoveButtons(employeesContainer);
+    
+    setupSuggestions('purpose', 'purpose-suggestions', RECENT_PURPOSES);
+    setupSuggestions('station', 'station-suggestions', RECENT_STATIONS);
+}
+
+function setupModeOfTravelListener(selectId, containerId, inputId) {
+    const select = document.getElementById(selectId);
+    const container = document.getElementById(containerId);
+    const input = document.getElementById(inputId);
+    
+    select.addEventListener('change', () => {
+        if (select.value === 'OTHER') {
+            container.classList.remove('hidden');
+            input.required = true;
+        } else {
+            container.classList.add('hidden');
+            input.required = false;
+            input.value = '';
+        }
+    });
+}
+
+function setupDatePickers() {
+    const inclusiveDatesInput = document.getElementById('inclusiveDates');
+    const inclusiveDatesDisplay = document.getElementById('inclusive-dates-display');
+    const dateSubmissionInput = document.getElementById('dateSubmission');
+    const submissionDateDisplay = document.getElementById('submission-date-display');
+    
+    fpDatePrepared = flatpickr("#datePrepared", {
+        dateFormat: "Y-m-d",
+        maxDate: "today",
+        minDate: LATEST_DATE_PREPARED ? formatToYyyyMmDd(addDays(LATEST_DATE_PREPARED, 1)) : null,
+        onChange: (selectedDates) => {
+            if (selectedDates.length > 0) {
+                const displayElem = document.getElementById('date-prepared-display');
+                if (displayElem) {
+                    displayElem.textContent = formatDateForDisplay(selectedDates[0].toISOString());
+                }
+                inclusiveDatesInput.disabled = false;
+                if (fpInclusive) {
+                    fpInclusive.set('minDate', selectedDates[0]);
+                }
+            }
+        }
+    });
+    
+    fpInclusive = flatpickr("#inclusiveDates", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        minDate: "today",
+        onChange: (selectedDates) => {
+            if (selectedDates.length === 2) {
+                const startDate = selectedDates[0];
+                const endDate = selectedDates[1];
+                const formattedDisplay = formatInclusiveDates(startDate.toISOString(), endDate.toISOString());
+                inclusiveDatesDisplay.textContent = formattedDisplay;
+                
+                const submissionDefaultDate = addDays(endDate, 3);
+                
+                dateSubmissionInput.disabled = false;
+                if (fpSubmission) {
+                    fpSubmission.set('minDate', endDate);
+                    fpSubmission.setDate(submissionDefaultDate, true);
+                }
+            }
+        }
+    });
+
+    fpSubmission = flatpickr("#dateSubmission", {
+        dateFormat: "Y-m-d",
+        minDate: "today",
+        onChange: (selectedDates) => {
+            if (selectedDates.length > 0) {
+                submissionDateDisplay.textContent = formatDateForDisplay(selectedDates[0].toISOString());
+            }
+        }
+    });
+}
+
+function validateNewToForm() {
+    clearFormErrors('new-to-form');
+    let isValid = true;
+    
+    const formData = {
+        datePrepared: document.getElementById('datePrepared').value,
+        inclusiveDates: document.getElementById('inclusiveDates').value,
+        destination: document.getElementById('destination').value,
+        station: document.getElementById('station').value,
+        purpose: document.getElementById('purpose').value,
+        modeOfTravel: document.getElementById('modeOfTravel').value,
+        requestingOfficer: document.getElementById('requestingOfficer').value,
+        dateSubmission: document.getElementById('dateSubmission').value,
+    };
+    
+    if (formData.modeOfTravel === 'OTHER') {
+        formData.modeOfTravel = document.getElementById('otherMode').value;
+        if (!formData.modeOfTravel) {
+            showFormError('otherMode', 'Please specify the mode of travel.'); 
+            isValid = false;
+        }
+    }
+    
+    const employees = getSelectedEmployees('employees-container');
+    
+    if (employees.length === 0) {
+        showToast("Please add at least one employee", true);
+        isValid = false;
+    }
+
+    const requiredFields = [
+        { id: 'datePrepared', name: 'Date Prepared' },
+        { id: 'inclusiveDates', name: 'Inclusive Dates' },
+        { id: 'destination', name: 'Destination' },
+        { id: 'station', name: 'Station' },
+        { id: 'purpose', name: 'Purpose' },
+        { id: 'modeOfTravel', name: 'Mode of Travel' },
+        { id: 'requestingOfficer', name: 'Requesting Officer' },
+        { id: 'dateSubmission', name: 'Submission Date' }
+    ];
+    
+    requiredFields.forEach(field => {
+        if (!formData[field.id.replace(/-([a-z])/g, (g) => g[1].toUpperCase())]) {
+            showFormError(field.id, `${field.name} is required.`);
+            isValid = false;
+        }
+    });
+    
+    if (!isValid) return null;
+
+    const dp = new Date(formData.datePrepared + 'T00:00:00');
+    const today = new Date(getTodayDate() + 'T00:00:00');
+    
+    if (dp > today) {
+        showFormError('datePrepared', 'Date Prepared cannot be in the future.');
+        isValid = false;
+    }
+    if (LATEST_DATE_PREPARED && dp <= LATEST_DATE_PREPARED) {
+        showFormError('datePrepared', `Date must be after the latest prepared date (${formatToYyyyMmDd(LATEST_DATE_PREPARED)}).`);
+        isValid = false;
+    }
+    
+    const [startStr, endStr] = formData.inclusiveDates.split(' to ');
+    if (!startStr || !endStr) {
+        showFormError('inclusiveDates', 'Please select a valid date range.');
+        return null;
+    }
+    
+    const start = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T00:00:00');
+    
+    if (start < dp) {
+        showFormError('inclusiveDates', 'Start Date cannot be before Date Prepared.');
+        isValid = false;
+    }
+    if (end < start) {
+        showFormError('inclusiveDates', 'End Date cannot be before Start Date.');
+        isValid = false;
+    }
+    
+    const submission = new Date(formData.dateSubmission + 'T00:00:00');
+    if (submission < end) {
+        showFormError('dateSubmission', 'Submission Date cannot be before Inclusive End Date.');
+        isValid = false;
+    }
+
+    if (!isValid) return null;
+
+    return {
+        datePrepared: dp.toISOString(),
+        inclusiveStart: start.toISOString(),
+        inclusiveEnd: end.toISOString(),
+        dateSubmission: submission.toISOString(),
+        employees: employees,
+        destination: formData.destination,
+        station: formData.station,
+        purpose: formData.purpose,
+        modeOfTravel: formData.modeOfTravel,
+        requestingOfficer: formData.requestingOfficer,
+    };
+}
+
+function handleNewToSubmit(e) {
+    e.preventDefault();
+    const formData = validateNewToForm();
+    
+    if (formData) {
+        showLoader("Saving Travel Order...");
+        document.getElementById('save-to-btn').disabled = true;
+        
+        google.script.run
+            .withSuccessHandler(onSaveSuccess)
+            .withFailureHandler(onSaveFailure)
+            .saveTravelOrder(formData);
+    }
+}
+
+function onSaveSuccess(result) {
+    if (result.success) {
+        showToast("Save successful! PDF is opening.");
+        window.open(result.pdfUrl, '_blank');
+        
+        ALL_TRAVEL_ORDERS.push(result.newRecord);
+        const newDatePrepared = new Date(result.newRecord.Date_Prepared);
+        if (!LATEST_DATE_PREPARED || newDatePrepared > LATEST_DATE_PREPARED) {
+            LATEST_DATE_PREPARED = newDatePrepared;
+        }
+        
+        loadDashboardView();
+    } else {
+        onSaveFailure({ message: result.error });
+    }
+}
+
+function onSaveFailure(error) {
+    console.error("Save Error:", error);
+    showToast("Save Failed: " + error.message, true);
+    document.getElementById('save-to-btn').disabled = false;
+    hideLoader();
+}
+
+function populateUpdateForm(data) {
+    document.getElementById('update-to-id').value = data.TO_ID;
+    document.getElementById('update-to-id-display').textContent = `Editing: ${data.TO_ID}`;
+    
+    document.getElementById('update-destination').value = data.Destination;
+    document.getElementById('update-station').value = data.Station || '';
+    document.getElementById('update-purpose').value = data.Purpose;
+    
+    const modeSelect = document.getElementById('update-modeOfTravel');
+    const standardModes = ['GOVERNMENT VEHICLE', 'PRIVATE VEHICLE', 'PUBLIC TRANSPORT', 'AIR TRAVEL', 'SEA TRAVEL'];
+    
+    if (standardModes.includes(data.Mode_of_Travel)) {
+        modeSelect.value = data.Mode_of_Travel;
+    } else {
+        modeSelect.value = 'OTHER';
+        const otherContainer = document.getElementById('update-otherModeContainer');
+        const otherInput = document.getElementById('update-otherMode');
+        otherContainer.classList.remove('hidden');
+        otherInput.value = data.Mode_of_Travel;
+        otherInput.required = true;
+    }
+    
+    populateProjectEngineerDropdown(document.getElementById('update-requestingOfficer'));
+    document.getElementById('update-requestingOfficer').value = data.Requesting_Officer;
+
+    const employeesContainer = document.getElementById('update-employees-container');
+    employeesContainer.innerHTML = '';
+    
+    const employees = Array.isArray(data.Employees) ? data.Employees : [data.Employees || ''];
+    employees.forEach((emp) => {
+        const row = createEmployeeRow(employeesContainer, true);
+        const select = row.querySelector('.employee-select');
+        select.value = emp;
+    });
+    
+    updateAllEmployeeDropdowns('update-employees-container');
+
+    const datePrepared = formatToYyyyMmDd(data.Date_Prepared);
+    const inclusiveStart = formatToYyyyMmDd(data.Inclusive_Start);
+    const inclusiveEnd = formatToYyyyMmDd(data.Inclusive_End);
+    const dateSubmission = formatToYyyyMmDd(data.Date_Submission_Travel_Report);
+
+    fpUpdateDatePrepared = flatpickr("#update-datePrepared", {
+        dateFormat: "Y-m-d",
+        maxDate: "today",
+        defaultDate: datePrepared,
+        onChange: (selectedDates) => {
+            if (selectedDates.length > 0) {
+                const displayElem = document.getElementById('update-date-prepared-display');
+                if (displayElem) {
+                    displayElem.textContent = formatDateForDisplay(selectedDates[0].toISOString());
+                }
+                if (fpUpdateInclusive) fpUpdateInclusive.set('minDate', selectedDates[0]);
+            }
+        }
+    });
+    
+    fpUpdateInclusive = flatpickr("#update-inclusiveDates", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        minDate: datePrepared,
+        defaultDate: [inclusiveStart, inclusiveEnd],
+        onChange: (selectedDates) => {
+            if (selectedDates.length === 2) {
+                const startDate = selectedDates[0];
+                const endDate = selectedDates[1];
+                const formattedDisplay = formatInclusiveDates(startDate.toISOString(), endDate.toISOString());
+                document.getElementById('update-inclusive-dates-display').textContent = formattedDisplay;
+                if (fpUpdateSubmission) {
+                    fpUpdateSubmission.set('minDate', endDate);
+                }
+            }
+        }
+    });
+
+    fpUpdateSubmission = flatpickr("#update-dateSubmission", {
+        dateFormat: "Y-m-d",
+        minDate: inclusiveEnd,
+        defaultDate: dateSubmission,
+        onChange: (selectedDates) => {
+            if (selectedDates.length > 0) {
+                document.getElementById('update-submission-date-display').textContent = formatDateForDisplay(selectedDates[0].toISOString());
+            }
+        }
+    });
+
+    document.getElementById('update-inclusive-dates-display').textContent = formatInclusiveDates(data.Inclusive_Start, data.Inclusive_End);
+    document.getElementById('update-submission-date-display').textContent = formatDateForDisplay(data.Date_Submission_Travel_Report);
+    document.getElementById('update-date-prepared-display').textContent = formatDateForDisplay(data.Date_Prepared);
+}
+
+function setupUpdateFormListeners() {
+    document.getElementById('update-to-form').addEventListener('submit', handleUpdateToSubmit);
+    document.getElementById('cancel-update-to-btn').addEventListener('click', (e) => {
+        e.preventDefault();
+        loadDashboardView();
+    });
+    
+    const employeesContainer = document.getElementById('update-employees-container');
+    document.getElementById('update-add-employee-btn').addEventListener('click', () => {
+        createEmployeeRow(employeesContainer, true);
+    });
+    
+    setupModeOfTravelListener('update-modeOfTravel', 'update-otherModeContainer', 'update-otherMode');
+    setupSuggestions('update-purpose', 'update-purpose-suggestions', RECENT_PURPOSES);
+    setupSuggestions('update-station', 'update-station-suggestions', RECENT_STATIONS);
+}
+
+function validateUpdateToForm() {
+    clearFormErrors('update-to-form');
+    let isValid = true;
+    
+    const formData = {
+        toId: document.getElementById('update-to-id').value,
+        datePrepared: document.getElementById('update-datePrepared').value,
+        inclusiveDates: document.getElementById('update-inclusiveDates').value,
+        destination: document.getElementById('update-destination').value,
+        station: document.getElementById('update-station').value,
+        purpose: document.getElementById('update-purpose').value,
+        modeOfTravel: document.getElementById('update-modeOfTravel').value,
+        requestingOfficer: document.getElementById('update-requestingOfficer').value,
+        dateSubmission: document.getElementById('update-dateSubmission').value,
+    };
+    
+    if (formData.modeOfTravel === 'OTHER') {
+        formData.modeOfTravel = document.getElementById('update-otherMode').value;
+        if (!formData.modeOfTravel) {
+            showFormError('update-otherMode', 'Please specify the mode of travel.');
+            isValid = false;
+        }
+    }
+    
+    const employees = getSelectedEmployees('update-employees-container');
+    
+    if (employees.length === 0) {
+        showToast("Please add at least one employee", true);
+        isValid = false;
+    }
+
+    const requiredFields = [
+        { id: 'update-datePrepared', name: 'Date Prepared', key: 'datePrepared' },
+        { id: 'update-inclusiveDates', name: 'Inclusive Dates', key: 'inclusiveDates' },
+        { id: 'update-destination', name: 'Destination', key: 'destination' },
+        { id: 'update-station', name: 'Station', key: 'station' },
+        { id: 'update-purpose', name: 'Purpose', key: 'purpose' },
+        { id: 'update-modeOfTravel', name: 'Mode of Travel', key: 'modeOfTravel' },
+        { id: 'update-requestingOfficer', name: 'Requesting Officer', key: 'requestingOfficer' },
+        { id: 'update-dateSubmission', name: 'Submission Date', key: 'dateSubmission' }
+    ];
+    
+    requiredFields.forEach(field => {
+        if (!formData[field.key]) {
+            showFormError(field.id, `${field.name} is required.`);
+            isValid = false;
+        }
+    });
+
+    if (!isValid) return null;
+
+    const dp = new Date(formData.datePrepared + 'T00:00:00');
+    const today = new Date(getTodayDate() + 'T00:00:00');
+    
+    if (dp > today) {
+        showFormError('update-datePrepared', 'Date Prepared cannot be in the future.');
+        isValid = false;
+    }
+    
+    const [startStr, endStr] = formData.inclusiveDates.split(' to ');
+    if (!startStr || !endStr) {
+        showFormError('update-inclusiveDates', 'Please select a valid date range.');
+        return null;
+    }
+    
+    const start = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T00:00:00');
+    
+    if (start < dp) {
+        showFormError('update-inclusiveDates', 'Start Date cannot be before Date Prepared.');
+        isValid = false;
+    }
+    
+    const submission = new Date(formData.dateSubmission + 'T00:00:00');
+    if (submission < end) {
+        showFormError('update-dateSubmission', 'Submission Date cannot be before Inclusive End Date.');
+        isValid = false;
+    }
+
+    if (!isValid) return null;
+
+    return {
+        datePrepared: dp.toISOString(),
+        inclusiveStart: start.toISOString(),
+        inclusiveEnd: end.toISOString(),
+        dateSubmission: submission.toISOString(),
+        employees: employees,
+        destination: formData.destination,
+        station: formData.station,
+        purpose: formData.purpose,
+        modeOfTravel: formData.modeOfTravel,
+        requestingOfficer: formData.requestingOfficer,
+    };
+}
+
+function handleUpdateToSubmit(e) {
+    e.preventDefault();
+    const formData = validateUpdateToForm();
+    const toId = document.getElementById('update-to-id').value;
+    
+    if (formData) {
+        showLoader("Updating Travel Order...");
+        document.getElementById('update-to-btn').disabled = true;
+        
+        google.script.run
+            .withSuccessHandler(onUpdateSuccess)
+            .withFailureHandler(onUpdateFailure)
+            .updateTravelOrder(formData, toId);
+    }
+}
+
+function onUpdateSuccess(result) {
+    if (result.success) {
+        showToast("Update successful! PDF is re-opening.");
+        window.open(result.pdfUrl, '_blank');
+        
+        const index = ALL_TRAVEL_ORDERS.findIndex(to => to.TO_ID === result.updatedRecord.TO_ID);
+        if (index !== -1) {
+            ALL_TRAVEL_ORDERS[index] = result.updatedRecord;
+        } else {
+            ALL_TRAVEL_ORDERS.push(result.updatedRecord);
+        }
+
+        const newDatePrepared = new Date(result.updatedRecord.Date_Prepared);
+        const latest = LATEST_DATE_PREPARED ? new Date(LATEST_DATE_PREPARED) : null;
+        
+        if (!latest || newDatePrepared > latest) {
+            LATEST_DATE_PREPARED = newDatePrepared;
+        } else if (newDatePrepared.toISOString() === latest.toISOString()) {
+            LATEST_DATE_PREPARED = ALL_TRAVEL_ORDERS.reduce((max, to) => {
+                const d = new Date(to.Date_Prepared);
+                return d > max ? d : max;
+            }, new Date(0));
+        }
+        
+        loadDashboardView();
+    } else {
+        onUpdateFailure({ message: result.error });
+    }
+}
+
+function onUpdateFailure(error) {
+    console.error("Update Error:", error);
+    showToast("Update Failed: " + error.message, true);
+    document.getElementById('update-to-btn').disabled = false;
+    hideLoader();
+}
+
+function setupMasterDataListeners() {
+    const tabs = document.querySelectorAll('.master-tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            const tabName = tab.dataset.tab;
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            document.getElementById(`${tabName}-tab`).classList.remove('hidden');
+        });
+    });
+}
+
+function populateMasterData() {
+    console.log("Populating master data...");
+    console.log("Employees:", EMPLOYEES_LIST.length);
+    console.log("Engineers:", PROJECT_ENGINEERS.length);
+    console.log("Approvers:", APPROVERS_LIST.length);
+    
+    populateMasterList('employees', EMPLOYEES_LIST);
+    populateMasterList('engineers', PROJECT_ENGINEERS);
+    populateMasterList('approvers', APPROVERS_LIST);
+}
+
+function populateMasterList(type, data) {
+    const activeContainer = document.getElementById(`active-${type}`);
+    const inactiveContainer = document.getElementById(`inactive-${type}`);
+    const template = document.getElementById('master-item-template');
+
+    if (!activeContainer || !inactiveContainer || !template) {
+        console.error(`Master data containers not found for ${type}`);
+        return;
+    }
+
+    activeContainer.innerHTML = '';
+    inactiveContainer.innerHTML = '';
+
+    const activeItems = data.filter(item => item.status === 'ACTIVE');
+    const inactiveItems = data.filter(item => item.status === 'INACTIVE');
+
+    activeItems.forEach(item => {
+        const clone = template.content.cloneNode(true);
+        clone.querySelector('.item-name').textContent = item.name;
+
+        if (item.employeeId) {
+            clone.querySelector('.item-employee-id').textContent = `ID: ${item.employeeId}`;
+            clone.querySelector('.item-employee-id').classList.remove('hidden');
+        }
+
+        if (item.position) {
+            clone.querySelector('.item-position').textContent = item.position;
+            clone.querySelector('.item-position').classList.remove('hidden');
+        }
+
+        const btn = clone.querySelector('.toggle-status-btn');
+        btn.title = 'Set as Inactive';
+        btn.addEventListener('click', () => toggleStatus(type, item.name, 'INACTIVE', item.position, item.employeeId));
+        activeContainer.appendChild(clone);
+    });
+
+    inactiveItems.forEach(item => {
+        const clone = template.content.cloneNode(true);
+        clone.querySelector('.item-name').textContent = item.name;
+        clone.querySelector('.item-name').classList.add('text-gray-500');
+
+        if (item.employeeId) {
+            clone.querySelector('.item-employee-id').textContent = `ID: ${item.employeeId}`;
+            clone.querySelector('.item-employee-id').classList.remove('hidden');
+        }
+
+        if (item.position) {
+            clone.querySelector('.item-position').textContent = item.position;
+            clone.querySelector('.item-position').classList.remove('hidden');
+        }
+
+        const btn = clone.querySelector('.toggle-status-btn');
+        btn.title = 'Set as Active';
+        btn.addEventListener('click', () => toggleStatus(type, item.name, 'ACTIVE', item.position, item.employeeId));
+        inactiveContainer.appendChild(clone);
+    });
+
+    if (activeItems.length === 0) {
+        activeContainer.innerHTML = '<p class="text-gray-400 text-sm italic">No active entries</p>';
+    }
+    if (inactiveItems.length === 0) {
+        inactiveContainer.innerHTML = '<p class="text-gray-400 text-sm italic">No inactive entries</p>';
+    }
+}
+
+function toggleStatus(type, name, newStatus, position, employeeId) {
+    showLoader("Updating status...");
+
+    const typeMap = { employees: 'employee', engineers: 'engineer', approvers: 'approver' };
+    const updateData = { name: name, status: newStatus };
+    if (position) updateData.position = position;
+    if (employeeId) updateData.employeeId = employeeId;
+
+    google.script.run
+        .withSuccessHandler(() => {
+            const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
+            const list = listMap[type];
+            const item = list.find(i => i.name === name);
+            if (item) item.status = newStatus;
+
+            populateMasterData();
+            showToast("Status updated successfully!");
+            hideLoader();
+        })
+        .withFailureHandler((error) => {
+            showToast("Failed to update status: " + error.message, true);
+            hideLoader();
+        })
+        .updateMasterData(typeMap[type], name, updateData);
+}
+
+function showAddForm(type) {
+    const modal = document.getElementById('add-modal');
+    const titleMap = {
+        employee: 'Add New Employee',
+        engineer: 'Add New Project Engineer',
+        approver: 'Add New Approver'
+    };
+
+    document.getElementById('add-modal-title').textContent = titleMap[type];
+    document.getElementById('add-name').value = '';
+    document.getElementById('add-employee-id').value = '';
+    document.getElementById('add-position').value = '';
+
+    const employeeIdGroup = document.getElementById('add-employee-id-group');
+    const positionGroup = document.getElementById('add-position-group');
+
+    if (type === 'employee') {
+        employeeIdGroup.classList.remove('hidden');
+        positionGroup.classList.add('hidden');
+        document.getElementById('add-position').required = false;
+    } else if (type === 'approver') {
+        employeeIdGroup.classList.add('hidden');
+        positionGroup.classList.remove('hidden');
+        document.getElementById('add-position').required = true;
+    } else {
+        employeeIdGroup.classList.add('hidden');
+        positionGroup.classList.add('hidden');
+        document.getElementById('add-position').required = false;
+    }
+
+    modal.classList.remove('hidden');
+
+    const form = document.getElementById('add-form');
+    form.onsubmit = (e) => {
+        e.preventDefault();
+        handleAddSubmit(type);
+    };
+}
+
+function closeAddModal() {
+    document.getElementById('add-modal').classList.add('hidden');
+}
+
+function handleAddSubmit(type) {
+    const name = document.getElementById('add-name').value.trim();
+    const employeeId = document.getElementById('add-employee-id').value.trim();
+    const position = document.getElementById('add-position').value.trim();
+
+    if (!name) {
+        showToast("Name is required", true);
+        return;
+    }
+
+    if (type === 'approver' && !position) {
+        showToast("Position is required", true);
+        return;
+    }
+
+    showLoader("Adding entry...");
+    closeAddModal();
+
+    const data = { name: name, status: 'ACTIVE' };
+    if (type === 'employee' && employeeId) data.employeeId = employeeId;
+    if (type === 'approver') data.position = position;
+
+    google.script.run
+        .withSuccessHandler(() => {
+            const listMap = { employee: EMPLOYEES_LIST, engineer: PROJECT_ENGINEERS, approver: APPROVERS_LIST };
+            listMap[type].push(data);
+
+            populateMasterData();
+            showToast("Entry added successfully!");
+            hideLoader();
+        })
+        .withFailureHandler((error) => {
+            showToast("Failed to add entry: " + error.message, true);
+            hideLoader();
+        })
+        .saveMasterData(type, data);
+}
+</script>

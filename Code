@@ -1,0 +1,792 @@
+const DATABASE_SHEET_ID = "1TlcVa6NAX-2o4qGzfb1jsw3tD-R8L8K5jucwLcD_mGA";
+const PDF_TEMPLATE_DOC_ID = "1NXH4c9kAf7L2ILw0egJZaETEeiah5fvH61JRpuxEW0o";
+const TARGET_PDF_FOLDER_ID = "1PmESdk0hdF0H38eTOOJ-uOlhAOMz6-by";
+
+const DB_SHEET_NAME = "Travel Orders";
+const PROJECT_ENGINEER_MASTER_SHEET = "Project Engineer Master";
+const EMPLOYEES_MASTER_SHEET = "Employees Master";
+const APPROVERS_MASTER_SHEET = "Approvers Master";
+const TO_ID_PREFIX = "RO2.2";
+const TO_ID_CONNECTOR = "-JO";
+const HEADERS = [
+  "TO_ID", "Date_Prepared", "Inclusive_Start", "Inclusive_End", "Employees", "Destination", 
+  "Station", "Purpose", "Mode_of_Travel", "Requesting_Officer", "Date_Submission_Travel_Report", 
+  "Status", "PDF_Link", "Created_By", "Created_Date", "Last_Modified_By", "Last_Modified_Date"
+];
+const DATE_COLUMNS = [2, 3, 4, 11, 15, 17];
+
+function onOpen(e) {
+  SpreadsheetApp.getUi()
+    .createMenu('Travel Order System')
+    .addItem('Open System', 'showWebApp')
+    .addToUi();
+}
+
+function setupSheetHeaders() {
+  const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+  if (sheet.getRange("A1").getValue() === "") {
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight("bold");
+    sheet.setFrozenRows(1);
+    Logger.log("Headers written to " + DB_SHEET_NAME);
+  } else {
+    Logger.log("Headers already exist.");
+  }
+}
+
+function showWebApp() {
+  const html = HtmlService.createTemplateFromFile('main')
+    .evaluate()
+    .setTitle('Travel Order Management System')
+    .setWidth(1400)
+    .setHeight(900);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Travel Order Management System');
+}
+
+function doGet(e) {
+  return HtmlService.createTemplateFromFile('main')
+    .evaluate()
+    .setTitle('Travel Order Management System')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function getProjectEngineers() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PROJECT_ENGINEER_MASTER_SHEET);
+    if (!sheet) {
+      Logger.log("Project Engineer Master sheet not found");
+      return [];
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      Logger.log("No data in Project Engineer Master sheet");
+      return [];
+    }
+    const headers = data[0];
+    const nameIdx = headers.indexOf("Name");
+    const statusIdx = headers.indexOf("Status");
+    if (nameIdx === -1) {
+      Logger.log("Name column not found in Project Engineer Master");
+      return [];
+    }
+    const result = data.slice(1)
+      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
+      .map(row => ({
+        name: row[nameIdx].toString().trim().toUpperCase(),
+        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().toUpperCase() : "ACTIVE"
+      }));
+    Logger.log("Project Engineers loaded: " + result.length);
+    return result;
+  } catch (e) {
+    Logger.log("Error fetching project engineers: " + e);
+    return [];
+  }
+}
+
+function getEmployees() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(EMPLOYEES_MASTER_SHEET);
+    if (!sheet) {
+      Logger.log("Employees Master sheet not found");
+      return [];
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      Logger.log("No data in Employees Master sheet");
+      return [];
+    }
+    const headers = data[0];
+    const nameIdx = headers.indexOf("Name");
+    const employeeIdIdx = headers.indexOf("Employee_ID");
+    const statusIdx = headers.indexOf("Status");
+    if (nameIdx === -1) {
+      Logger.log("Name column not found in Employees Master");
+      return [];
+    }
+    const result = data.slice(1)
+      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
+      .map(row => ({
+        name: row[nameIdx].toString().trim().toUpperCase(),
+        employeeId: employeeIdIdx !== -1 && row[employeeIdIdx] ? row[employeeIdIdx].toString().trim() : "",
+        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().toUpperCase() : "ACTIVE"
+      }));
+    Logger.log("Employees loaded: " + result.length);
+    return result;
+  } catch (e) {
+    Logger.log("Error fetching employees: " + e);
+    return [];
+  }
+}
+
+function getApprovers() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(APPROVERS_MASTER_SHEET);
+    if (!sheet) {
+      Logger.log("Approvers Master sheet not found");
+      return [];
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      Logger.log("No data in Approvers Master sheet");
+      return [];
+    }
+    const headers = data[0];
+    const nameIdx = headers.indexOf("Name");
+    const positionIdx = headers.indexOf("Position");
+    const statusIdx = headers.indexOf("Status");
+    if (nameIdx === -1) {
+      Logger.log("Name column not found in Approvers Master");
+      return [];
+    }
+    const result = data.slice(1)
+      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
+      .map(row => ({
+        name: row[nameIdx].toString().trim().toUpperCase(),
+        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "",
+        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().toUpperCase() : "ACTIVE"
+      }));
+    Logger.log("Approvers loaded: " + result.length);
+    return result;
+  } catch (e) {
+    Logger.log("Error fetching approvers: " + e);
+    return [];
+  }
+}
+
+function getRecentPurposes() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const purposeIdx = headers.indexOf("Purpose");
+    if (purposeIdx === -1) return [];
+    const purposes = data.slice(1)
+      .map(row => row[purposeIdx])
+      .filter(p => p && p.toString().trim() !== "")
+      .map(p => p.toString().trim().toUpperCase());
+    return [...new Set(purposes)].slice(-20).reverse();
+  } catch (e) {
+    Logger.log("Error fetching recent purposes: " + e);
+    return [];
+  }
+}
+
+function getRecentStations() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const stationIdx = headers.indexOf("Station");
+    if (stationIdx === -1) return [];
+    const stations = data.slice(1)
+      .map(row => row[stationIdx])
+      .filter(s => s && s.toString().trim() !== "")
+      .map(s => s.toString().trim().toUpperCase());
+    return [...new Set(stations)].slice(-20).reverse();
+  } catch (e) {
+    Logger.log("Error fetching recent stations: " + e);
+    return [];
+  }
+}
+
+function getInitialData() {
+  try {
+    Logger.log("getInitialData called");
+    
+    const data = getAllTravelOrders();
+    const latestDate = getLatestDatePrepared();
+    const projectEngineers = getProjectEngineers();
+    const employees = getEmployees();
+    const approvers = getApprovers();
+    const recentPurposes = getRecentPurposes();
+    const recentStations = getRecentStations();
+    
+    const result = {
+      travelOrders: data,
+      latestDate: latestDate ? latestDate.toISOString() : null,
+      projectEngineers: projectEngineers,
+      employees: employees,
+      approvers: approvers,
+      recentPurposes: recentPurposes,
+      recentStations: recentStations
+    };
+    
+    Logger.log("getInitialData returning " + data.length + " travel orders");
+    Logger.log("Project Engineers: " + projectEngineers.length);
+    Logger.log("Employees: " + employees.length);
+    Logger.log("Approvers: " + approvers.length);
+    return result;
+  } catch (e) {
+    Logger.log("ERROR in getInitialData: " + e.message);
+    Logger.log(e.stack);
+    return { error: e.message };
+  }
+}
+
+function getAllTravelOrders() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+    const range = sheet.getDataRange();
+    const values = range.getValues();
+    
+    if (values.length <= 1) {
+      Logger.log("No travel orders found - only headers present");
+      return [];
+    }
+    
+    const headers = values.shift();
+    Logger.log("Headers: " + headers.join(", "));
+
+    const data = values.map((row) => {
+      let obj = {};
+      headers.forEach((header, i) => {
+        if (DATE_COLUMNS.includes(i + 1) && row[i]) {
+          obj[header] = new Date(row[i]).toISOString();
+        } else if (header === "Employees" && row[i]) {
+          try {
+            obj[header] = JSON.parse(row[i]);
+          } catch (e) {
+            obj[header] = [row[i]];
+          }
+        } else {
+          obj[header] = row[i];
+        }
+      });
+      return obj;
+    });
+    
+    Logger.log("getAllTravelOrders returning " + data.length + " records");
+    return data;
+  } catch (e) {
+    Logger.log("ERROR in getAllTravelOrders: " + e.message);
+    return [];
+  }
+}
+
+function getTravelOrderById(toId) {
+  const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+  const data = sheet.getDataRange().getValues();
+  const headers = data.shift();
+  const idColIndex = headers.indexOf("TO_ID");
+
+  if (idColIndex === -1) {
+    throw new Error("TO_ID column not found.");
+  }
+
+  const row = data.find(r => r[idColIndex] === toId);
+  if (!row) return null;
+
+  let obj = {};
+  headers.forEach((header, i) => {
+    if (DATE_COLUMNS.includes(i + 1) && row[i]) {
+      obj[header] = new Date(row[i]).toISOString();
+    } else if (header === "Employees" && row[i]) {
+      try {
+        obj[header] = JSON.parse(row[i]);
+      } catch (e) {
+        obj[header] = [row[i]];
+      }
+    } else {
+      obj[header] = row[i];
+    }
+  });
+  return obj;
+}
+
+function saveTravelOrder(form) {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+    const userEmail = Session.getActiveUser().getEmail();
+    const now = new Date();
+
+    const datePrepared = new Date(form.datePrepared);
+    const start = new Date(form.inclusiveStart);
+    const end = new Date(form.inclusiveEnd);
+    const submission = new Date(form.dateSubmission);
+
+    if (datePrepared > new Date()) throw new Error("Date Prepared cannot be in the future.");
+    if (start < datePrepared) throw new Error("Start Date cannot be before Date Prepared.");
+    if (end < start) throw new Error("End Date cannot be before Start Date.");
+    if (submission < end) throw new Error("Submission date cannot be before End Date.");
+
+    const toId = generateToId(datePrepared);
+    
+    const employeesJson = JSON.stringify(form.employees.map(e => e.toUpperCase()));
+
+    const newRow = [
+      toId,
+      Utilities.formatDate(datePrepared, "Asia/Manila", "yyyy-MM-dd"),
+      Utilities.formatDate(start, "Asia/Manila", "yyyy-MM-dd"),
+      Utilities.formatDate(end, "Asia/Manila", "yyyy-MM-dd"),
+      employeesJson,
+      form.destination.toUpperCase(),
+      form.station.toUpperCase(),
+      form.purpose.toUpperCase(),
+      form.modeOfTravel.toUpperCase(),
+      form.requestingOfficer.toUpperCase(),
+      Utilities.formatDate(submission, "Asia/Manila", "yyyy-MM-dd"),
+      "Pending PDF",
+      "",
+      userEmail,
+      now,
+      userEmail,
+      now
+    ];
+
+    sheet.appendRow(newRow);
+    
+    const newRowNumber = sheet.getLastRow();
+    const pdfResult = generateAndLinkPdf(toId, newRowNumber);
+    const newRecord = getTravelOrderById(toId);
+    
+    return { success: true, newRecord: newRecord, pdfUrl: pdfResult.pdfUrl };
+
+  } catch (e) {
+    Logger.log(e);
+    return { success: false, error: e.message };
+  }
+}
+
+function updateTravelOrder(form, toId) {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+    const data = sheet.getDataRange().getValues();
+    const headers = data.shift();
+    const idColIndex = headers.indexOf("TO_ID");
+
+    const rowIndex = data.findIndex(r => r[idColIndex] === toId);
+    if (rowIndex === -1) {
+      throw new Error("Travel Order not found for update.");
+    }
+    
+    const rowNumber = rowIndex + 2;
+
+    const datePrepared = new Date(form.datePrepared);
+    const start = new Date(form.inclusiveStart);
+    const end = new Date(form.inclusiveEnd);
+    const submission = new Date(form.dateSubmission);
+    
+    if (datePrepared > new Date()) throw new Error("Date Prepared cannot be in the future.");
+    if (start < datePrepared) throw new Error("Start Date cannot be before Date Prepared.");
+    if (end < start) throw new Error("End Date cannot be before Start Date.");
+    if (submission < end) throw new Error("Submission date cannot be before End Date.");
+
+    const employeesJson = JSON.stringify(form.employees.map(e => e.toUpperCase()));
+
+    const updateData = {
+      "Date_Prepared": Utilities.formatDate(datePrepared, "Asia/Manila", "yyyy-MM-dd"),
+      "Inclusive_Start": Utilities.formatDate(start, "Asia/Manila", "yyyy-MM-dd"),
+      "Inclusive_End": Utilities.formatDate(end, "Asia/Manila", "yyyy-MM-dd"),
+      "Employees": employeesJson,
+      "Destination": form.destination.toUpperCase(),
+      "Station": form.station.toUpperCase(),
+      "Purpose": form.purpose.toUpperCase(),
+      "Mode_of_Travel": form.modeOfTravel.toUpperCase(),
+      "Requesting_Officer": form.requestingOfficer.toUpperCase(),
+      "Date_Submission_Travel_Report": Utilities.formatDate(submission, "Asia/Manila", "yyyy-MM-dd"),
+      "Last_Modified_By": Session.getActiveUser().getEmail(),
+      "Last_Modified_Date": new Date()
+    };
+
+    headers.forEach((header, index) => {
+      if (updateData[header] !== undefined) {
+        sheet.getRange(rowNumber, index + 1).setValue(updateData[header]);
+      }
+    });
+
+    const pdfResult = generateAndLinkPdf(toId, rowNumber);
+    const updatedRecord = getTravelOrderById(toId);
+    return { success: true, updatedRecord: updatedRecord, pdfUrl: pdfResult.pdfUrl };
+
+  } catch (e) {
+    Logger.log(e);
+    return { success: false, error: e.message };
+  }
+}
+
+function getLatestDatePrepared() {
+  const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+  const range = sheet.getRange("B2:B");
+  const values = range.getValues();
+  
+  let latestDate = null;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i][0]) {
+      let d = new Date(values[i][0]);
+      if (latestDate === null || d > latestDate) {
+        latestDate = d;
+      }
+    }
+  }
+  return latestDate;
+}
+
+function generateToId(datePrepared) {
+  const year = datePrepared.getFullYear();
+  const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+  const idColumn = sheet.getRange("A2:A").getValues();
+  
+  let maxSerial = 0;
+  const regex = new RegExp(`${TO_ID_PREFIX}-(\\d{4})${TO_ID_CONNECTOR}(\\d{5})`);
+
+  for (let i = 0; i < idColumn.length; i++) {
+    if (idColumn[i][0]) {
+      const match = idColumn[i][0].match(regex);
+      if (match) {
+        const idYear = parseInt(match[1], 10);
+        const idSerial = parseInt(match[2], 10);
+        if (idYear === year && idSerial > maxSerial) {
+          maxSerial = idSerial;
+        }
+      }
+    }
+  }
+
+  const newSerial = maxSerial + 1;
+  const paddedSerial = String(newSerial).padStart(5, '0');
+  
+  return `${TO_ID_PREFIX}-${year}${TO_ID_CONNECTOR}${paddedSerial}`;
+}
+
+function formatInclusiveDates(startDate, endDate) {
+  const options = { year: 'numeric', month: 'long', day: 'numeric' };
+  const startStr = startDate.toLocaleDateString('en-US', options);
+  const endStr = endDate.toLocaleDateString('en-US', options);
+
+  if (startStr === endStr) {
+    return startStr;
+  }
+
+  const startMonth = startDate.getMonth();
+  const startYear = startDate.getFullYear();
+  const endMonth = endDate.getMonth();
+  const endYear = endDate.getFullYear();
+
+  if (startYear !== endYear) {
+    return `${startStr} – ${endStr}`;
+  }
+  
+  if (startMonth !== endMonth) {
+    return `${startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}, ${startYear} – ${endStr}`;
+  }
+  
+  const startDay = startDate.getDate();
+  const endDay = endDate.getDate();
+  return `${startDate.toLocaleDateString('en-US', { month: 'long' })} ${startDay}–${endDay}, ${startYear}`;
+}
+
+function generateAndLinkPdf(toId, rowNumber) {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+    const dataRange = sheet.getDataRange();
+    const allData = dataRange.getValues();
+    const headers = allData.shift();
+    
+    if (!rowNumber) {
+      const idColIndex = headers.indexOf("TO_ID");
+      if (idColIndex === -1) {
+        throw new Error("TO_ID column not found in sheet.");
+      }
+      
+      const rowIndex = allData.findIndex(r => r[idColIndex] === toId);
+      if (rowIndex === -1) {
+        throw new Error(`TO_ID '${toId}' not found in sheet.`);
+      }
+      rowNumber = rowIndex + 2;
+    }
+
+    const rowData = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+    
+    const data = {};
+    headers.forEach((header, i) => {
+      data[header] = rowData[i];
+    });
+
+    const datePrepared = new Date(data.Date_Prepared);
+    const startDate = new Date(data.Inclusive_Start);
+    const endDate = new Date(data.Inclusive_End);
+    const submissionDate = new Date(data.Date_Submission_Travel_Report);
+    
+    let employeesArray = [];
+    try {
+      employeesArray = JSON.parse(data.Employees);
+    } catch (e) {
+      employeesArray = [data.Employees];
+    }
+    const employeesStr = employeesArray.join(", ");
+    
+    const pdfData = {
+      "{{TO_ID}}": toId,
+      "{{DATE_PREPARED}}": datePrepared.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      "{{INCLUSIVE_DATES}}": formatInclusiveDates(startDate, endDate),
+      "{{EMPLOYEES}}": employeesStr,
+      "{{DESTINATION}}": data.Destination,
+      "{{STATION}}": data.Station,
+      "{{PURPOSE}}": data.Purpose,
+      "{{MODE_OF_TRAVEL}}": data.Mode_of_Travel,
+      "{{REQUESTING_OFFICER}}": data.Requesting_Officer,
+      "{{DATE_SUBMISSION_REPORT}}": submissionDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    };
+
+    const templateFile = DriveApp.getFileById(PDF_TEMPLATE_DOC_ID);
+    const targetFolder = DriveApp.getFolderById(TARGET_PDF_FOLDER_ID);
+    
+    const newDocName = `TO - ${toId} - ${employeesArray[0] || 'Unknown'}`;
+    const newDocFile = templateFile.makeCopy(newDocName, targetFolder);
+    const newDoc = DocumentApp.openById(newDocFile.getId());
+    const body = newDoc.getBody();
+    
+    for (const [placeholder, value] of Object.entries(pdfData)) {
+      body.replaceText(placeholder, value || 'N/A');
+    }
+    
+    newDoc.saveAndClose();
+    
+    const pdfBlob = newDocFile.getBlob().getAs('application/pdf');
+    const pdfFile = targetFolder.createFile(pdfBlob).setName(newDocName + ".pdf");
+    
+    DriveApp.getFileById(newDocFile.getId()).setTrashed(true);
+    
+    const pdfUrl = pdfFile.getUrl();
+    
+    const pdfLinkCol = headers.indexOf("PDF_Link") + 1;
+    const statusCol = headers.indexOf("Status") + 1;
+    
+    sheet.getRange(rowNumber, pdfLinkCol).setValue(pdfUrl);
+    sheet.getRange(rowNumber, statusCol).setValue("Completed");
+    
+    return { success: true, pdfUrl: pdfUrl };
+
+  } catch (e) {
+    Logger.log(e);
+    try {
+      if (rowNumber) {
+        const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const statusCol = headers.indexOf("Status") + 1;
+        sheet.getRange(rowNumber, statusCol).setValue("PDF Error");
+      }
+    } catch (err) {}
+
+    return { success: false, error: e.message };
+  }
+}
+
+function saveMasterData(type, data) {
+  try {
+    let sheetName;
+    if (type === 'employee') sheetName = EMPLOYEES_MASTER_SHEET;
+    else if (type === 'engineer') sheetName = PROJECT_ENGINEER_MASTER_SHEET;
+    else if (type === 'approver') sheetName = APPROVERS_MASTER_SHEET;
+    else throw new Error("Invalid master data type");
+
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(sheetName);
+    if (!sheet) throw new Error(`Sheet ${sheetName} not found`);
+
+    if (sheet.getLastRow() === 0) {
+      if (type === 'approver') {
+        sheet.getRange(1, 1, 1, 3).setValues([["Name", "Position", "Status"]]).setFontWeight("bold");
+      } else if (type === 'employee') {
+        sheet.getRange(1, 1, 1, 3).setValues([["Name", "Employee_ID", "Status"]]).setFontWeight("bold");
+      } else {
+        sheet.getRange(1, 1, 1, 2).setValues([["Name", "Status"]]).setFontWeight("bold");
+      }
+    }
+
+    if (type === 'approver') {
+      sheet.appendRow([data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"]);
+    } else if (type === 'employee') {
+      sheet.appendRow([data.name.toUpperCase(), data.employeeId || "", data.status || "ACTIVE"]);
+    } else {
+      sheet.appendRow([data.name.toUpperCase(), data.status || "ACTIVE"]);
+    }
+
+    return { success: true };
+  } catch (e) {
+    Logger.log(e);
+    return { success: false, error: e.message };
+  }
+}
+
+function updateMasterData(type, oldName, newData) {
+  try {
+    let sheetName;
+    if (type === 'employee') sheetName = EMPLOYEES_MASTER_SHEET;
+    else if (type === 'engineer') sheetName = PROJECT_ENGINEER_MASTER_SHEET;
+    else if (type === 'approver') sheetName = APPROVERS_MASTER_SHEET;
+    else throw new Error("Invalid master data type");
+
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(sheetName);
+    if (!sheet) throw new Error(`Sheet ${sheetName} not found`);
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const nameIdx = headers.indexOf("Name");
+
+    const rowIndex = data.slice(1).findIndex(r => r[nameIdx] === oldName);
+    if (rowIndex === -1) throw new Error("Entry not found");
+
+    const rowNumber = rowIndex + 2;
+
+    sheet.getRange(rowNumber, nameIdx + 1).setValue(newData.name.toUpperCase());
+
+    const statusIdx = headers.indexOf("Status");
+    if (statusIdx !== -1) {
+      sheet.getRange(rowNumber, statusIdx + 1).setValue(newData.status);
+    }
+
+    if (type === 'approver') {
+      const positionIdx = headers.indexOf("Position");
+      if (positionIdx !== -1) {
+        sheet.getRange(rowNumber, positionIdx + 1).setValue(newData.position.toUpperCase());
+      }
+    }
+
+    if (type === 'employee') {
+      const employeeIdIdx = headers.indexOf("Employee_ID");
+      if (employeeIdIdx !== -1) {
+        sheet.getRange(rowNumber, employeeIdIdx + 1).setValue(newData.employeeId || "");
+      }
+    }
+
+    return { success: true };
+  } catch (e) {
+    Logger.log(e);
+    return { success: false, error: e.message };
+  }
+}
+
+function getDashboardAnalytics() {
+  try {
+    const allOrders = getAllTravelOrders();
+    
+    Logger.log("getDashboardAnalytics - Total orders: " + allOrders.length);
+
+    const totalOrders = allOrders.length;
+    const completedOrders = allOrders.filter(o => o.Status === "Completed").length;
+    const pendingOrders = allOrders.filter(o => o.Status === "Pending PDF").length;
+    const errorOrders = allOrders.filter(o => o.Status === "PDF Error").length;
+
+    const employeeStats = {};
+    allOrders.forEach(order => {
+      const employees = Array.isArray(order.Employees) ? order.Employees : [order.Employees];
+      employees.forEach(emp => {
+        if (emp) {
+          employeeStats[emp] = (employeeStats[emp] || 0) + 1;
+        }
+      });
+    });
+
+    const topEmployees = Object.entries(employeeStats)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    const monthlyStats = {};
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthlyStats[key] = 0;
+    }
+
+    allOrders.forEach(order => {
+      if (order.Date_Prepared) {
+        const date = new Date(order.Date_Prepared);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (monthlyStats.hasOwnProperty(key)) {
+          monthlyStats[key]++;
+        }
+      }
+    });
+
+    const monthlyData = Object.entries(monthlyStats).map(([month, count]) => ({
+      month,
+      count
+    }));
+
+    const destinationStats = {};
+    allOrders.forEach(order => {
+      if (order.Destination) {
+        destinationStats[order.Destination] = (destinationStats[order.Destination] || 0) + 1;
+      }
+    });
+
+    const topDestinations = Object.entries(destinationStats)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const modeStats = {};
+    allOrders.forEach(order => {
+      if (order.Mode_of_Travel) {
+        modeStats[order.Mode_of_Travel] = (modeStats[order.Mode_of_Travel] || 0) + 1;
+      }
+    });
+
+    const travelModes = Object.entries(modeStats)
+      .map(([mode, count]) => ({ mode, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const purposeStats = {};
+    allOrders.forEach(order => {
+      if (order.Purpose) {
+        purposeStats[order.Purpose] = (purposeStats[order.Purpose] || 0) + 1;
+      }
+    });
+
+    const topPurposes = Object.entries(purposeStats)
+      .map(([purpose, count]) => ({ purpose, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const recentOrders = allOrders
+      .sort((a, b) => {
+        const dateA = a.Created_Date ? new Date(a.Created_Date) : new Date(0);
+        const dateB = b.Created_Date ? new Date(b.Created_Date) : new Date(0);
+        return dateB - dateA;
+      })
+      .slice(0, 5);
+
+    return {
+      summary: {
+        total: totalOrders,
+        completed: completedOrders,
+        pending: pendingOrders,
+        error: errorOrders
+      },
+      employeeStats: topEmployees,
+      monthlyStats: monthlyData,
+      destinationStats: topDestinations,
+      travelModes: travelModes,
+      purposeStats: topPurposes,
+      recentOrders: recentOrders
+    };
+  } catch (e) {
+    Logger.log("Error in getDashboardAnalytics: " + e);
+    return { error: e.message };
+  }
+}
+
+function getDashboardView() {
+  return HtmlService.createHtmlOutputFromFile('dashboard').getContent();
+}
+
+function getTravelOrdersView() {
+  return HtmlService.createHtmlOutputFromFile('travelOrders').getContent();
+}
+
+function getNewToView() {
+  return HtmlService.createHtmlOutputFromFile('newTo').getContent();
+}
+
+function getUpdateView() {
+  return HtmlService.createHtmlOutputFromFile('update').getContent();
+}
+
+function getMasterDataView() {
+  return HtmlService.createHtmlOutputFromFile('masterData').getContent();
+}
