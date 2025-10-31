@@ -7,9 +7,18 @@ let APPROVERS_LIST = [];
 let RECENT_PURPOSES = [];
 let RECENT_STATIONS = [];
 let EMPLOYEE_POSITIONS = []; 
-let ENGINEER_POSITIONS = []; // MODIFICATION: Added global var for engineer positions
+let ENGINEER_POSITIONS = [];
 let CURRENT_VIEW = 'dashboard';
 let _successModalRedirect = 'dashboard'; 
+let _toIdToEdit = null;
+
+// --- MODIFICATION FOR LOCKING ---
+// Array para sa mga TO_IDs na na-unlock sa session na ito
+let UNLOCKED_TO_IDS = []; 
+// Sinusubaybayan kung lagpas 5 PM na
+let isAfter5PM = (new Date().getHours() >= 17); 
+let relockTimer = null; // Timer para sa auto-lock
+// --- END MODIFICATION ---
 
 const getTodayDate = () => {
     const today = new Date();
@@ -201,6 +210,31 @@ window.addEventListener('load', () => {
             }
         });
     }
+
+    // MODIFICATION: Add password modal listeners
+    const passModalCloseBtn = document.getElementById('password-modal-close-btn');
+    if (passModalCloseBtn) {
+        passModalCloseBtn.addEventListener('click', closePasswordModal);
+    }
+    const passModalSubmitBtn = document.getElementById('password-modal-submit-btn');
+    if (passModalSubmitBtn) {
+        passModalSubmitBtn.addEventListener('click', handleSubmitPassword);
+    }
+    const passForm = document.getElementById('password-form');
+    if (passForm) {
+        // The form tag already has onsubmit, but this is a good fallback.
+        passForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleSubmitPassword();
+        });
+    }
+    
+    // --- MODIFICATION FOR LOCKING ---
+    // Simulan ang timer na nagche-check kada minuto para sa 5 PM auto-lock
+    if (!relockTimer) {
+        relockTimer = setInterval(checkAutoRelock, 60000); // Check every minute
+    }
+    // --- END MODIFICATION ---
     
     google.script.run
         .withSuccessHandler(onInitialLoadSuccess)
@@ -211,50 +245,30 @@ window.addEventListener('load', () => {
 function onInitialLoadSuccess(data) {
     console.log("=== INITIAL DATA RECEIVED ===");
     console.log("Data:", data);
-
-    if (!data) {
-        console.error("ERROR: No data received from server!");
-        onInitialLoadFailure({ message: "No data received from server" });
-        return;
-    }
-
+    
     if (data.error) {
-        console.error("ERROR: Data contains error:", data.error);
+        console.error("Data contains error:", data.error);
         onInitialLoadFailure({ message: data.error });
         return;
     }
-
-    // Store data with detailed logging
+    
     LATEST_DATE_PREPARED = data.latestDate ? new Date(data.latestDate) : null;
-    console.log("✓ Latest Date Prepared:", LATEST_DATE_PREPARED);
-
     ALL_TRAVEL_ORDERS = data.travelOrders || [];
-    console.log("✓ Travel Orders:", ALL_TRAVEL_ORDERS.length);
-
     PROJECT_ENGINEERS = data.projectEngineers || [];
-    console.log("✓ Project Engineers:", PROJECT_ENGINEERS.length);
-
     EMPLOYEES_LIST = data.employees || [];
-    console.log("✓ Employees:", EMPLOYEES_LIST.length);
-
     APPROVERS_LIST = data.approvers || [];
-    console.log("✓ Approvers:", APPROVERS_LIST.length);
-
     RECENT_PURPOSES = data.recentPurposes || [];
-    console.log("✓ Recent Purposes:", RECENT_PURPOSES.length);
-
     RECENT_STATIONS = data.recentStations || [];
-    console.log("✓ Recent Stations:", RECENT_STATIONS.length);
-
     EMPLOYEE_POSITIONS = data.employeePositions || [];
-    console.log("✓ Employee Positions:", EMPLOYEE_POSITIONS.length);
-
-    ENGINEER_POSITIONS = data.engineerPositions || [];
-    console.log("✓ Engineer Positions:", ENGINEER_POSITIONS.length);
-
-    console.log("=== ALL DATA LOADED SUCCESSFULLY ===");
-    console.log("Loading dashboard view...");
-
+    ENGINEER_POSITIONS = data.engineerPositions || []; // MODIFICATION: Store engineer positions
+    
+    console.log("Travel Orders:", ALL_TRAVEL_ORDERS.length);
+    console.log("Employees:", EMPLOYEES_LIST.length);
+    console.log("Project Engineers:", PROJECT_ENGINEERS.length);
+    console.log("Approvers:", APPROVERS_LIST.length);
+    console.log("Employee Positions:", EMPLOYEE_POSITIONS.length);
+    console.log("Engineer Positions:", ENGINEER_POSITIONS.length); // MODIFICATION
+    
     loadDashboardView();
 }
 
@@ -542,31 +556,37 @@ function onPdfFailure(error) {
     hideLoader();
 }
 
-function closeViewModal() {
-    document.getElementById('view-modal').classList.add('hidden');
-}
-
-// MODIFICATION: Added functions to show/hide success modal
+// --- MODIFICATION FOR LOCKING ---
 /**
- * @description Shows the global success modal.
- * @param {string} title The title for the modal (e.g., "Save Successful!").
- * @param {string} message A descriptive message.
- * @param {string} toId The Travel Order ID.
- * @param {string} pdfUrl The URL to the generated PDF.
+ * @description Tine-check bawat minuto kung lumagpas na ng 5 PM.
+ * Kung oo, ila-lock ulit nito ang lahat ng entries.
  */
-function showSuccessModal(title, message, toId, pdfUrl) {
-    const modal = document.getElementById('success-modal');
-    if (modal) {
-        document.getElementById('success-modal-title').textContent = title;
-        document.getElementById('success-modal-message').textContent = message;
-        document.getElementById('success-modal-to-id').textContent = toId;
+function checkAutoRelock() {
+    const now = new Date();
+    const currentIsAfter5PM = (now.getHours() >= 17); // 5 PM or later (17:00)
+
+    if (currentIsAfter5PM && !isAfter5PM) {
+        // Kakalagpas lang ng 5 PM
+        console.log("Auto-locking entries after 5 PM.");
+        isAfter5PM = true; // Itakda ang flag
         
-        const pdfLink = document.getElementById('success-modal-pdf-link');
-        pdfLink.href = pdfUrl;
-        
-        modal.classList.remove('hidden');
+        if (UNLOCKED_TO_IDS.length > 0) {
+            UNLOCKED_TO_IDS = []; // I-clear ang listahan ng mga na-unlock
+            
+            // Kung nasa 'travel-orders' view, i-refresh ang table para ipakita ang locked buttons
+            if (CURRENT_VIEW === 'travel-orders') {
+                populateDashboardTable(ALL_TRAVEL_ORDERS);
+            }
+            showToast("It's after 5 PM. All unlocked entries have been re-locked.");
+        }
+    } else if (!currentIsAfter5PM && isAfter5PM) {
+        // Kakalagpas lang ng hatinggabi (12 AM), i-reset ang flag para bukas
+        console.log("Resetting 5 PM lock state for new day.");
+        isAfter5PM = false;
     }
 }
+// --- END MODIFICATION ---
+
 
 /**
  * @description Hides the global success modal.
@@ -577,5 +597,82 @@ function closeSuccessModal() {
         modal.classList.add('hidden');
     }
 }
+
+// MODIFICATION: Add password modal functions
+function showPasswordModal() {
+    const modal = document.getElementById('password-modal');
+    if (modal) {
+        document.getElementById('admin-password').value = '';
+        document.getElementById('password-error-msg').classList.add('hidden');
+        modal.classList.remove('hidden');
+        document.getElementById('admin-password').focus();
+    }
+}
+
+function closePasswordModal() {
+    const modal = document.getElementById('password-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        _toIdToEdit = null; // Clear the stored ID
+    }
+}
+
+function handleSubmitPassword() {
+    const passwordInput = document.getElementById('admin-password');
+    const errorMsg = document.getElementById('password-error-msg');
+    const password = passwordInput.value;
+    
+    if (!password) {
+        errorMsg.textContent = "Password cannot be empty.";
+        errorMsg.classList.remove('hidden');
+        return;
+    }
+    
+    // --- MODIFICATION FOR LOCKING ---
+    // Suriin kung lagpas 5 PM na bago pa man mag-check ng password
+    if (isAfter5PM) {
+        errorMsg.textContent = "Unlocking is disabled after 5:00 PM.";
+        errorMsg.classList.remove('hidden');
+        hideLoader();
+        return; // Hihinto dito
+    }
+    // --- END MODIFICATION ---
+    
+    showLoader("Verifying...");
+    
+    google.script.run
+        .withSuccessHandler(isAdmin => {
+            hideLoader();
+            if (isAdmin) {
+                // --- MODIFICATION: Success Logic Updated ---
+                errorMsg.classList.add('hidden');
+                
+                // 1. Idagdag sa listahan ng mga na-unlock
+                if (!UNLOCKED_TO_IDS.includes(_toIdToEdit)) {
+                    UNLOCKED_TO_IDS.push(_toIdToEdit);
+                }
+                
+                closePasswordModal(); // 2. Isara ang modal
+                
+                // 3. I-refresh ang table para ipakita ang na-unlock na button
+                //    (HINDI ididiretso sa edit page)
+                if (CURRENT_VIEW === 'travel-orders') {
+                    populateDashboardTable(ALL_TRAVEL_ORDERS);
+                }
+                // --- END MODIFICATION ---
+            } else {
+                errorMsg.textContent = "Incorrect password.";
+                errorMsg.classList.remove('hidden');
+                passwordInput.select();
+            }
+        })
+        .withFailureHandler(err => {
+            hideLoader();
+            errorMsg.textContent = "Error: " + err.message;
+            errorMsg.classList.remove('hidden');
+        })
+        .checkAdminPassword(password);
+}
+// END MODIFICATION
 </script>
 
