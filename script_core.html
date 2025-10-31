@@ -7,6 +7,7 @@ let APPROVERS_LIST = [];
 let RECENT_PURPOSES = [];
 let RECENT_STATIONS = [];
 let CURRENT_VIEW = 'dashboard';
+let _successModalRedirect = 'dashboard'; // MODIFICATION: Added global variable
 
 const getTodayDate = () => {
     const today = new Date();
@@ -174,6 +175,25 @@ window.addEventListener('load', () => {
     showLoader("Initializing System...");
     
     setupNavListeners();
+
+    // MODIFICATION: Changed listener for the success modal close button
+    const closeBtn = document.getElementById('success-modal-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            closeSuccessModal();
+            
+            if (_successModalRedirect === 'clear_new_form') {
+                if (typeof resetNewToForm === 'function') {
+                    resetNewToForm();
+                }
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else if (_successModalRedirect === 'travel_orders') {
+                loadTravelOrdersView();
+            } else {
+                loadDashboardView(); // Default fallback
+            }
+        });
+    }
     
     google.script.run
         .withSuccessHandler(onInitialLoadSuccess)
@@ -214,28 +234,82 @@ function onInitialLoadFailure(error) {
     showToast("Failed to load data: " + error.message, true);
 }
 
-function populateEmployeeDropdown(selectElement, excludeValues = []) {
+/**
+ * @description Populates an employee dropdown.
+ * @param {HTMLSelectElement} selectElement The <select> element to populate.
+ * @param {string[]} [excludeValues=[]] An array of names to exclude.
+ * @param {string | null} [valueToInclude=null] A specific name to include, even if inactive.
+ */
+function populateEmployeeDropdown(selectElement, excludeValues = [], valueToInclude = null) {
     selectElement.innerHTML = '<option value="">Select Employee</option>';
-    EMPLOYEES_LIST
-        .filter(emp => emp.status === 'ACTIVE' && !excludeValues.includes(emp.name))
-        .forEach(emp => {
-            const option = document.createElement('option');
-            option.value = emp.name;
-            option.textContent = emp.name;
-            selectElement.appendChild(option);
-        });
+    let includedValue = false;
+    
+    const activeEmployees = EMPLOYEES_LIST
+        .filter(emp => emp.status.trim() === 'ACTIVE' && !excludeValues.includes(emp.name));
+        
+    activeEmployees.forEach(emp => {
+        const option = document.createElement('option');
+        option.value = emp.name;
+        option.textContent = emp.name;
+        selectElement.appendChild(option);
+        if (emp.name === valueToInclude) {
+            includedValue = true;
+        }
+    });
+
+    // If the saved value is not in the active list (e.g., they are inactive OR excluded)
+    // we must add them to the list anyway so the dropdown can display them.
+    if (valueToInclude && !includedValue) {
+        // Check the *master* list for the status, not the filtered list.
+        const employee = EMPLOYEES_LIST.find(emp => emp.name === valueToInclude);
+        const isInactive = employee && employee.status.trim() === 'INACTIVE';
+        
+        const option = document.createElement('option');
+        option.value = valueToInclude;
+        option.textContent = isInactive ? `${valueToInclude} (Inactive)` : valueToInclude; // Only add (Inactive) if truly inactive
+        if (isInactive) {
+            option.style.color = "#6b7280"; // Gray text
+        }
+        selectElement.appendChild(option);
+    }
 }
 
-function populateProjectEngineerDropdown(selectElement) {
+/**
+ * @description Populates the project engineer dropdown.
+ * @param {HTMLSelectElement} selectElement The <select> element to populate.
+ * @param {string | null} [valueToInclude=null] A specific name to include, even if inactive.
+ */
+function populateProjectEngineerDropdown(selectElement, valueToInclude = null) {
     selectElement.innerHTML = '<option value="">Select Project Engineer</option>';
-    PROJECT_ENGINEERS
-        .filter(pe => pe.status === 'ACTIVE')
-        .forEach(pe => {
-            const option = document.createElement('option');
-            option.value = pe.name;
-            option.textContent = pe.name;
-            selectElement.appendChild(option);
-        });
+    let includedValue = false;
+
+    const activeEngineers = PROJECT_ENGINEERS
+        .filter(pe => pe.status.trim() === 'ACTIVE');
+
+    activeEngineers.forEach(pe => {
+        const option = document.createElement('option');
+        option.value = pe.name;
+        option.textContent = pe.name;
+        selectElement.appendChild(option);
+        if (pe.name === valueToInclude) {
+            includedValue = true;
+        }
+    });
+
+    // If the saved value is not in the active list
+    if (valueToInclude && !includedValue) {
+        // Check the *master* list for the status
+        const engineer = PROJECT_ENGINEERS.find(pe => pe.name === valueToInclude);
+        const isInactive = engineer && engineer.status.trim() === 'INACTIVE';
+
+        const option = document.createElement('option');
+        option.value = valueToInclude;
+        option.textContent = isInactive ? `${valueToInclude} (Inactive)` : valueToInclude;
+        if (isInactive) {
+            option.style.color = "#6b7280";
+        }
+        selectElement.appendChild(option);
+    }
 }
 
 function getSelectedEmployees(containerId) {
@@ -243,19 +317,31 @@ function getSelectedEmployees(containerId) {
     return Array.from(selects).map(sel => sel.value).filter(val => val);
 }
 
+/**
+ * @description Re-populates all employee dropdowns, respecting existing selections
+ * and ensuring inactive selected employees remain in their lists.
+ */
 function updateAllEmployeeDropdowns(containerId) {
     const selectedEmployees = getSelectedEmployees(containerId);
     const selects = document.querySelectorAll(`#${containerId} .employee-select`);
     
     selects.forEach(select => {
         const currentValue = select.value;
+        // We must pass `currentValue` as the `valueToInclude` to ensure it
+        // doesn't get removed from its *own* list if it's inactive.
         const excludeValues = selectedEmployees.filter(emp => emp !== currentValue);
-        populateEmployeeDropdown(select, excludeValues);
+        populateEmployeeDropdown(select, excludeValues, currentValue); 
         select.value = currentValue;
     });
 }
 
-function createEmployeeRow(container, isUpdate = false) {
+/**
+ * @description Creates a new employee row with a dropdown.
+ * @param {HTMLElement} container The container element to append the row to.
+ * @param {string | null} [valueToInclude=null] The name of the employee to pre-select.
+ * @returns {HTMLElement} The newly created row element.
+ */
+function createEmployeeRow(container, valueToInclude = null) {
     const row = document.createElement('div');
     row.className = 'employee-row flex gap-2';
     
@@ -284,7 +370,18 @@ function createEmployeeRow(container, isUpdate = false) {
     row.appendChild(removeBtn);
     container.appendChild(row);
     
-    updateAllEmployeeDropdowns(container.id);
+    // Get all *other* selected values
+    const selectedEmployees = getSelectedEmployees(container.id);
+    const excludeValues = selectedEmployees.filter(emp => emp !== valueToInclude);
+    
+    // Populate this new dropdown
+    populateEmployeeDropdown(select, excludeValues, valueToInclude);
+    
+    // Set the value *after* populating
+    if (valueToInclude) {
+        select.value = valueToInclude;
+    }
+    
     updateEmployeeRemoveButtons(container);
     
     return row;
@@ -415,4 +512,39 @@ function onPdfFailure(error) {
 function closeViewModal() {
     document.getElementById('view-modal').classList.add('hidden');
 }
+
+// MODIFICATION: Added functions to show/hide success modal
+/**
+ * @description Shows the global success modal.
+ * @param {string} title The title for the modal (e.g., "Save Successful!").
+ * @param {string} message A descriptive message.
+ * @param {string} toId The Travel Order ID.
+ * @param {string} pdfUrl The URL to the generated PDF.
+ */
+function showSuccessModal(title, message, toId, pdfUrl) {
+    const modal = document.getElementById('success-modal');
+    if (modal) {
+        document.getElementById('success-modal-title').textContent = title;
+        document.getElementById('success-modal-message').textContent = message;
+        document.getElementById('success-modal-to-id').textContent = toId;
+        
+        const pdfLink = document.getElementById('success-modal-pdf-link');
+        pdfLink.href = pdfUrl;
+        
+        modal.classList.remove('hidden');
+    }
+}
+
+/**
+ * @description Hides the global success modal.
+ */
+function closeSuccessModal() {
+    const modal = document.getElementById('success-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
 </script>
+
+
+
