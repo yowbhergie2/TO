@@ -53,6 +53,7 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+// MODIFICATION: Added Position to Project Engineers
 function getProjectEngineers() {
   try {
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PROJECT_ENGINEER_MASTER_SHEET);
@@ -67,6 +68,7 @@ function getProjectEngineers() {
     }
     const headers = data[0];
     const nameIdx = headers.indexOf("Name");
+    const positionIdx = headers.indexOf("Position"); // MODIFICATION: Get position index
     const statusIdx = headers.indexOf("Status");
     if (nameIdx === -1) {
       Logger.log("Name column not found in Project Engineer Master");
@@ -76,6 +78,7 @@ function getProjectEngineers() {
       .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
       .map(row => ({
         name: row[nameIdx].toString().trim().toUpperCase(),
+        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "", // MODIFICATION: Get position value
         status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().toUpperCase() : "ACTIVE"
       }));
     Logger.log("Project Engineers loaded: " + result.length);
@@ -99,18 +102,22 @@ function getEmployees() {
       return [];
     }
     const headers = data[0];
-    const nameIdx = headers.indexOf("Name");
+    // MODIFICATION: Get column indices based on header names
     const employeeIdIdx = headers.indexOf("Employee_ID");
+    const nameIdx = headers.indexOf("Name");
+    const positionIdx = headers.indexOf("Position");
     const statusIdx = headers.indexOf("Status");
-    if (nameIdx === -1) {
-      Logger.log("Name column not found in Employees Master");
+
+    if (employeeIdIdx === -1 || nameIdx === -1) {
+      Logger.log("Required columns (Employee_ID, Name) not found in Employees Master");
       return [];
     }
     const result = data.slice(1)
-      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
+      .filter(row => row[employeeIdIdx] && row[employeeIdIdx].toString().trim() !== "")
       .map(row => ({
+        employeeId: row[employeeIdIdx].toString().trim(), // Keep original case for ID? Assuming uppercase.
         name: row[nameIdx].toString().trim().toUpperCase(),
-        employeeId: employeeIdIdx !== -1 && row[employeeIdIdx] ? row[employeeIdIdx].toString().trim() : "",
+        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "",
         status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().toUpperCase() : "ACTIVE"
       }));
     Logger.log("Employees loaded: " + result.length);
@@ -152,6 +159,46 @@ function getApprovers() {
     return result;
   } catch (e) {
     Logger.log("Error fetching approvers: " + e);
+    return [];
+  }
+}
+
+// MODIFICATION: Added function to get unique employee positions
+function getEmployeePositions() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(EMPLOYEES_MASTER_SHEET);
+    if (!sheet) return [];
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const positionIdx = headers.indexOf("Position");
+    if (positionIdx === -1) return [];
+    const positions = data.slice(1)
+      .map(row => row[positionIdx])
+      .filter(p => p && p.toString().trim() !== "")
+      .map(p => p.toString().trim().toUpperCase());
+    return [...new Set(positions)]; // Return unique list
+  } catch (e) {
+    Logger.log("Error fetching employee positions: " + e);
+    return [];
+  }
+}
+
+// MODIFICATION: Added new function to get unique engineer positions
+function getEngineerPositions() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PROJECT_ENGINEER_MASTER_SHEET);
+    if (!sheet) return [];
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const positionIdx = headers.indexOf("Position");
+    if (positionIdx === -1) return [];
+    const positions = data.slice(1)
+      .map(row => row[positionIdx])
+      .filter(p => p && p.toString().trim() !== "")
+      .map(p => p.toString().trim().toUpperCase());
+    return [...new Set(positions)]; // Return unique list
+  } catch (e) {
+    Logger.log("Error fetching engineer positions: " + e);
     return [];
   }
 }
@@ -203,6 +250,8 @@ function getInitialData() {
     const approvers = getApprovers();
     const recentPurposes = getRecentPurposes();
     const recentStations = getRecentStations();
+    const employeePositions = getEmployeePositions(); // MODIFICATION: Get employee positions
+    const engineerPositions = getEngineerPositions(); // MODIFICATION: Get engineer positions
     
     const result = {
       travelOrders: data,
@@ -211,7 +260,9 @@ function getInitialData() {
       employees: employees,
       approvers: approvers,
       recentPurposes: recentPurposes,
-      recentStations: recentStations
+      recentStations: recentStations,
+      employeePositions: employeePositions, // MODIFICATION: Add to result
+      engineerPositions: engineerPositions // MODIFICATION: Add to result
     };
     
     Logger.log("getInitialData returning " + data.length + " travel orders");
@@ -578,31 +629,33 @@ function generateAndLinkPdf(toId, rowNumber) {
 function saveMasterData(type, data) {
   try {
     let sheetName;
-    if (type === 'employee') sheetName = EMPLOYEES_MASTER_SHEET;
-    else if (type === 'engineer') sheetName = PROJECT_ENGINEER_MASTER_SHEET;
-    else if (type === 'approver') sheetName = APPROVERS_MASTER_SHEET;
-    else throw new Error("Invalid master data type");
+    let newRow;
+    let headers;
+
+    if (type === 'employee') {
+      sheetName = EMPLOYEES_MASTER_SHEET;
+      headers = ["Employee_ID", "Name", "Position", "Status"];
+      newRow = [data.employeeId, data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"];
+    } else if (type === 'engineer') {
+      sheetName = PROJECT_ENGINEER_MASTER_SHEET;
+      headers = ["Name", "Position", "Status"]; // MODIFICATION: Added Position
+      newRow = [data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"]; // MODIFICATION: Added Position
+    } else if (type === 'approver') {
+      sheetName = APPROVERS_MASTER_SHEET;
+      headers = ["Name", "Position", "Status"];
+      newRow = [data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"];
+    } else {
+      throw new Error("Invalid master data type");
+    }
 
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(sheetName);
     if (!sheet) throw new Error(`Sheet ${sheetName} not found`);
 
     if (sheet.getLastRow() === 0) {
-      if (type === 'approver') {
-        sheet.getRange(1, 1, 1, 3).setValues([["Name", "Position", "Status"]]).setFontWeight("bold");
-      } else if (type === 'employee') {
-        sheet.getRange(1, 1, 1, 3).setValues([["Name", "Employee_ID", "Status"]]).setFontWeight("bold");
-      } else {
-        sheet.getRange(1, 1, 1, 2).setValues([["Name", "Status"]]).setFontWeight("bold");
-      }
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");
     }
 
-    if (type === 'approver') {
-      sheet.appendRow([data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"]);
-    } else if (type === 'employee') {
-      sheet.appendRow([data.name.toUpperCase(), data.employeeId || "", data.status || "ACTIVE"]);
-    } else {
-      sheet.appendRow([data.name.toUpperCase(), data.status || "ACTIVE"]);
-    }
+    sheet.appendRow(newRow);
 
     return { success: true };
   } catch (e) {
@@ -611,45 +664,98 @@ function saveMasterData(type, data) {
   }
 }
 
-function updateMasterData(type, oldName, newData) {
+function updateMasterData(type, key, newData) {
   try {
     let sheetName;
-    if (type === 'employee') sheetName = EMPLOYEES_MASTER_SHEET;
-    else if (type === 'engineer') sheetName = PROJECT_ENGINEER_MASTER_SHEET;
-    else if (type === 'approver') sheetName = APPROVERS_MASTER_SHEET;
-    else throw new Error("Invalid master data type");
+    let keyColumnName;
+
+    if (type === 'employee') {
+      sheetName = EMPLOYEES_MASTER_SHEET;
+      keyColumnName = "Employee_ID";
+    } else if (type === 'engineer') {
+      sheetName = PROJECT_ENGINEER_MASTER_SHEET;
+      keyColumnName = "Name";
+    } else if (type === 'approver') {
+      sheetName = APPROVERS_MASTER_SHEET;
+      keyColumnName = "Name";
+    } else {
+      throw new Error("Invalid master data type");
+    }
 
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(sheetName);
     if (!sheet) throw new Error(`Sheet ${sheetName} not found`);
 
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
-    const nameIdx = headers.indexOf("Name");
+    const keyIdx = headers.indexOf(keyColumnName);
 
-    const rowIndex = data.slice(1).findIndex(r => r[nameIdx] === oldName);
+    if (keyIdx === -1) throw new Error(`Key column ${keyColumnName} not found`);
+
+    const rowIndex = data.slice(1).findIndex(r => r[keyIdx] === key);
     if (rowIndex === -1) throw new Error("Entry not found");
 
     const rowNumber = rowIndex + 2;
 
-    sheet.getRange(rowNumber, nameIdx + 1).setValue(newData.name.toUpperCase());
+    // MODIFICATION: Update all relevant fields based on headers
+    headers.forEach((header, index) => {
+      if (header === "Name" && newData.name) {
+        sheet.getRange(rowNumber, index + 1).setValue(newData.name.toUpperCase());
+      } else if (header === "Position" && newData.position) {
+        sheet.getRange(rowNumber, index + 1).setValue(newData.position.toUpperCase());
+      } else if (header === "Status" && newData.status) {
+        sheet.getRange(rowNumber, index + 1).setValue(newData.status);
+      } else if (header === "Employee_ID" && newData.employeeId) {
+        // This shouldn't be updated, but included for completeness
+        sheet.getRange(rowNumber, index + 1).setValue(newData.employeeId);
+      }
+    });
 
+    return { success: true };
+  } catch (e) {
+    Logger.log(e);
+    return { success: false, error: e.message };
+  }
+}
+
+function setExclusiveActiveApprover(name, activeApproverData) {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(APPROVERS_MASTER_SHEET);
+    if (!sheet) throw new Error(`Sheet ${APPROVERS_MASTER_SHEET} not found`);
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const nameIdx = headers.indexOf("Name");
     const statusIdx = headers.indexOf("Status");
-    if (statusIdx !== -1) {
-      sheet.getRange(rowNumber, statusIdx + 1).setValue(newData.status);
+    const positionIdx = headers.indexOf("Position");
+
+    if (nameIdx === -1 || statusIdx === -1 || positionIdx === -1) {
+      throw new Error("Required columns (Name, Status, Position) not found in Approvers sheet");
     }
 
-    if (type === 'approver') {
-      const positionIdx = headers.indexOf("Position");
-      if (positionIdx !== -1) {
-        sheet.getRange(rowNumber, positionIdx + 1).setValue(newData.position.toUpperCase());
+    let newActiveRow = -1;
+
+    // Loop through all data rows (skip header)
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const rowName = row[nameIdx];
+      const rowStatus = row[statusIdx];
+      
+      if (rowName === name) {
+        // This is the one we want to set as ACTIVE
+        newActiveRow = i + 1; // 1-based index + 1 for header
+        
+        // Update its data in the sheet
+        sheet.getRange(newActiveRow, statusIdx + 1).setValue("ACTIVE");
+        sheet.getRange(newActiveRow, positionIdx + 1).setValue(activeApproverData.position.toUpperCase());
+        
+      } else if (rowStatus === "ACTIVE") {
+        // This is an old active row, set to INACTIVE
+        sheet.getRange(i + 1, statusIdx + 1).setValue("INACTIVE");
       }
     }
 
-    if (type === 'employee') {
-      const employeeIdIdx = headers.indexOf("Employee_ID");
-      if (employeeIdIdx !== -1) {
-        sheet.getRange(rowNumber, employeeIdIdx + 1).setValue(newData.employeeId || "");
-      }
+    if (newActiveRow === -1) {
+      throw new Error(`Approver with name '${name}' not found to set as active.`);
     }
 
     return { success: true };
@@ -658,6 +764,7 @@ function updateMasterData(type, oldName, newData) {
     return { success: false, error: e.message };
   }
 }
+
 
 function getDashboardAnalytics() {
   try {
@@ -790,3 +897,4 @@ function getUpdateView() {
 function getMasterDataView() {
   return HtmlService.createHtmlOutputFromFile('masterData').getContent();
 }
+
