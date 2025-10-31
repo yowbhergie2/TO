@@ -30,7 +30,7 @@ function setupNewToFormListeners() {
     
     document.getElementById('cancel-new-to-btn').addEventListener('click', (e) => {
         e.preventDefault();
-        loadDashboardView();
+        loadDashboardView(); // On New form, cancel goes to dashboard
     });
 
     const employeesContainer = document.getElementById('employees-container');
@@ -44,7 +44,7 @@ function setupNewToFormListeners() {
     populateProjectEngineerDropdown(document.getElementById('requestingOfficer'));
     
     document.getElementById('add-employee-btn').addEventListener('click', () => {
-        createEmployeeRow(employeesContainer);
+        createEmployeeRow(employeesContainer, null); // Pass null for new rows
     });
     
     setupModeOfTravelListener('modeOfTravel', 'otherModeContainer', 'otherMode');
@@ -64,7 +64,8 @@ function setupDatePickers() {
     fpDatePrepared = flatpickr("#datePrepared", {
         dateFormat: "Y-m-d",
         maxDate: "today",
-        minDate: LATEST_DATE_PREPARED ? formatToYyyyMmDd(addDays(LATEST_DATE_PREPARED, 1)) : null,
+        // FIX: Allow selection of the latest date
+        minDate: LATEST_DATE_PREPARED ? formatToYyyyMmDd(LATEST_DATE_PREPARED) : null,
         onChange: (selectedDates) => {
             if (selectedDates.length > 0) {
                 const displayElem = document.getElementById('date-prepared-display');
@@ -74,7 +75,11 @@ function setupDatePickers() {
                 inclusiveDatesInput.disabled = false;
                 if (fpInclusive) {
                     fpInclusive.set('minDate', selectedDates[0]);
+                    fpInclusive.clear(); // Clear range if date prepared changes
                 }
+                // Also disable/clear submission
+                dateSubmissionInput.disabled = true;
+                if (fpSubmission) fpSubmission.clear();
             }
         }
     });
@@ -82,7 +87,7 @@ function setupDatePickers() {
     fpInclusive = flatpickr("#inclusiveDates", {
         mode: "range",
         dateFormat: "Y-m-d",
-        minDate: "today",
+        minDate: "today", // This will be updated by fpDatePrepared onChange
         onChange: (selectedDates) => {
             if (selectedDates.length === 2) {
                 const startDate = selectedDates[0];
@@ -103,7 +108,7 @@ function setupDatePickers() {
 
     fpSubmission = flatpickr("#dateSubmission", {
         dateFormat: "Y-m-d",
-        minDate: "today",
+        minDate: "today", // This will be updated by fpInclusive onChange
         onChange: (selectedDates) => {
             if (selectedDates.length > 0) {
                 submissionDateDisplay.textContent = formatDateForDisplay(selectedDates[0].toISOString());
@@ -169,8 +174,9 @@ function validateNewToForm() {
         showFormError('datePrepared', 'Date Prepared cannot be in the future.');
         isValid = false;
     }
-    if (LATEST_DATE_PREPARED && dp <= LATEST_DATE_PREPARED) {
-        showFormError('datePrepared', `Date must be after the latest prepared date (${formatToYyyyMmDd(LATEST_DATE_PREPARED)}).`);
+    // FIX: Allow date >= latest date (changed from < to <=)
+    if (LATEST_DATE_PREPARED && dp < LATEST_DATE_PREPARED) {
+        showFormError('datePrepared', `Date must be on or after the latest prepared date (${formatToYyyyMmDd(LATEST_DATE_PREPARED)}).`);
         isValid = false;
     }
     
@@ -231,16 +237,27 @@ function handleNewToSubmit(e) {
 
 function onSaveSuccess(result) {
     if (result.success) {
-        showToast("Save successful! PDF is opening.");
-        window.open(result.pdfUrl, '_blank');
-        
+        // Update global data
         ALL_TRAVEL_ORDERS.push(result.newRecord);
         const newDatePrepared = new Date(result.newRecord.Date_Prepared);
         if (!LATEST_DATE_PREPARED || newDatePrepared > LATEST_DATE_PREPARED) {
             LATEST_DATE_PREPARED = newDatePrepared;
         }
         
-        loadDashboardView();
+        _successModalRedirect = 'clear_new_form'; // Set redirect logic for modal close
+
+        // Show success modal instead of toast/redirect
+        showSuccessModal(
+            "Save Successful!",
+            "New Travel Order has been created and PDF generated.",
+            result.newRecord.TO_ID,
+            result.pdfUrl
+        );
+        
+        // Re-enable button, hide loader
+        document.getElementById('save-to-btn').disabled = false;
+        hideLoader();
+
     } else {
         onSaveFailure({ message: result.error });
     }
@@ -256,7 +273,7 @@ function onSaveFailure(error) {
 function loadUpdateView(toId) {
     console.log("=== LOADING UPDATE VIEW ===");
     showLoader("Loading Update Form...");
-    updateNavActiveState('new');
+    updateNavActiveState('new'); // Keep 'new' active as it's a form
 
     google.script.run
         .withSuccessHandler(html => {
@@ -302,19 +319,24 @@ function populateUpdateForm(data) {
         otherInput.required = true;
     }
     
-    populateProjectEngineerDropdown(document.getElementById('update-requestingOfficer'));
-    document.getElementById('update-requestingOfficer').value = data.Requesting_Officer;
+    // Pass the saved value to the dropdown function
+    const requestingOfficerSelect = document.getElementById('update-requestingOfficer');
+    populateProjectEngineerDropdown(requestingOfficerSelect, data.Requesting_Officer);
+    requestingOfficerSelect.value = data.Requesting_Officer;
 
     const employeesContainer = document.getElementById('update-employees-container');
     employeesContainer.innerHTML = '';
     
     const employees = Array.isArray(data.Employees) ? data.Employees : [data.Employees || ''];
     employees.forEach((emp) => {
-        const row = createEmployeeRow(employeesContainer, true);
-        const select = row.querySelector('.employee-select');
-        select.value = emp;
+        // Pass the saved employee name to createEmployeeRow
+        if(emp) {
+            createEmployeeRow(employeesContainer, emp);
+        }
     });
     
+    // This will re-populate all dropdowns, but since createEmployeeRow
+    // already set the value, it should be respected by updateAllEmployeeDropdowns
     updateAllEmployeeDropdowns('update-employees-container');
 
     const datePrepared = formatToYyyyMmDd(data.Date_Prepared);
@@ -375,12 +397,13 @@ function setupUpdateFormListeners() {
     document.getElementById('update-to-form').addEventListener('submit', handleUpdateToSubmit);
     document.getElementById('cancel-update-to-btn').addEventListener('click', (e) => {
         e.preventDefault();
-        loadDashboardView();
+        // Go back to travel orders list
+        loadTravelOrdersView();
     });
     
     const employeesContainer = document.getElementById('update-employees-container');
     document.getElementById('update-add-employee-btn').addEventListener('click', () => {
-        createEmployeeRow(employeesContainer, true);
+        createEmployeeRow(employeesContainer, null); // Pass null for new rows
     });
     
     setupModeOfTravelListener('update-modeOfTravel', 'update-otherModeContainer', 'update-otherMode');
@@ -501,9 +524,7 @@ function handleUpdateToSubmit(e) {
 
 function onUpdateSuccess(result) {
     if (result.success) {
-        showToast("Update successful! PDF is re-opening.");
-        window.open(result.pdfUrl, '_blank');
-        
+        // Update global data
         const index = ALL_TRAVEL_ORDERS.findIndex(to => to.TO_ID === result.updatedRecord.TO_ID);
         if (index !== -1) {
             ALL_TRAVEL_ORDERS[index] = result.updatedRecord;
@@ -516,14 +537,28 @@ function onUpdateSuccess(result) {
         
         if (!latest || newDatePrepared > latest) {
             LATEST_DATE_PREPARED = newDatePrepared;
-        } else if (newDatePrepared.toISOString() === latest.toISOString()) {
+        } else if (latest && newDatePrepared.toISOString() === latest.toISOString()) {
+            // Recalculate latest date if the updated one was the latest
             LATEST_DATE_PREPARED = ALL_TRAVEL_ORDERS.reduce((max, to) => {
                 const d = new Date(to.Date_Prepared);
                 return d > max ? d : max;
             }, new Date(0));
         }
         
-        loadDashboardView();
+        _successModalRedirect = 'travel_orders'; // Set redirect logic
+
+        // Show success modal
+        showSuccessModal(
+            "Update Successful!",
+            "Travel Order has been updated and PDF re-generated.",
+            result.updatedRecord.TO_ID,
+            result.pdfUrl
+        );
+        
+        // Re-enable button, hide loader
+        document.getElementById('update-to-btn').disabled = false;
+        hideLoader();
+
     } else {
         onUpdateFailure({ message: result.error });
     }
@@ -534,5 +569,56 @@ function onUpdateFailure(error) {
     showToast("Update Failed: " + error.message, true);
     document.getElementById('update-to-btn').disabled = false;
     hideLoader();
+}
+
+function resetNewToForm() {
+    const form = document.getElementById('new-to-form');
+    if (!form) return;
+
+    form.reset(); // Resets basic inputs
+
+    // Clear flatpickrs
+    if (fpDatePrepared) fpDatePrepared.clear();
+    if (fpInclusive) fpInclusive.clear();
+    if (fpSubmission) fpSubmission.clear();
+
+    // Clear display text
+    document.getElementById('date-prepared-display').textContent = '';
+    document.getElementById('inclusive-dates-display').textContent = '';
+    document.getElementById('submission-date-display').textContent = '';
+
+    // Disable dependent date pickers
+    document.getElementById('inclusiveDates').disabled = true;
+    document.getElementById('dateSubmission').disabled = true;
+
+    // Reset employees
+    const employeesContainer = document.getElementById('employees-container');
+    employeesContainer.innerHTML = `
+        <div class="employee-row flex gap-2">
+            <select class="employee-select flex-1 input-field" required>
+                <option value="">Select Employee</option>
+            </select>
+            <button type="button" class="remove-employee-btn hidden bg-red-50 text-red-600 px-4 rounded-lg hover:bg-red-100 transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </button>
+        </div>
+    `;
+    populateEmployeeDropdown(employeesContainer.querySelector('.employee-select'));
+    updateEmployeeRemoveButtons(employeesContainer);
+
+    // Reset 'Other' mode of travel
+    document.getElementById('otherModeContainer').classList.add('hidden');
+    document.getElementById('otherMode').required = false;
+
+    // Clear suggestion dropdowns if they exist
+    const purposeSuggestions = document.getElementById('purpose-suggestions');
+    if (purposeSuggestions) purposeSuggestions.classList.add('hidden');
+    const stationSuggestions = document.getElementById('station-suggestions');
+    if (stationSuggestions) stationSuggestions.classList.add('hidden');
+    
+    // Clear errors
+    clearFormErrors('new-to-form');
 }
 </script>
