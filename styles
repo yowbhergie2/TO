@@ -326,7 +326,7 @@
   
   .empty-state {
     padding: 4rem 2rem;
-    text-center;
+    text-align: center;
   }
   
   .empty-state-icon {
@@ -419,7 +419,8 @@
     transform: translateX(4px);
   }
 
-  .toggle-status-btn {
+  /* MODIFICATION: Renamed from .toggle-status-btn to .master-action-btn for styling */
+  .master-action-btn {
     padding: 0.5rem;
     border-radius: 0.5rem;
     background: #f3f4f6;
@@ -429,7 +430,8 @@
     cursor: pointer;
   }
 
-  .toggle-status-btn:hover {
+  /* MODIFICATION: Renamed from .toggle-status-btn:hover to .master-action-btn:hover */
+  .master-action-btn:hover {
     background: #e5e7eb;
     color: #374151;
     transform: scale(1.1);
@@ -440,6 +442,7 @@
     padding: 1rem;
     border-bottom: 1px solid #f3f4f6;
   }
+  /* END MODIFICATION */
 
   #view-modal-content .detail-row:last-child {
     border-bottom: none;
@@ -457,3 +460,5 @@
     font-size: 0.875rem;
   }
 </style>
+
+
