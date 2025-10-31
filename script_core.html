@@ -6,8 +6,10 @@ let EMPLOYEES_LIST = [];
 let APPROVERS_LIST = [];
 let RECENT_PURPOSES = [];
 let RECENT_STATIONS = [];
+let EMPLOYEE_POSITIONS = []; 
+let ENGINEER_POSITIONS = []; // MODIFICATION: Added global var for engineer positions
 let CURRENT_VIEW = 'dashboard';
-let _successModalRedirect = 'dashboard'; // MODIFICATION: Added global variable
+let _successModalRedirect = 'dashboard'; 
 
 const getTodayDate = () => {
     const today = new Date();
@@ -99,7 +101,13 @@ const showToast = (message, isError = false) => {
 const showFormError = (inputId, message) => {
     const input = document.getElementById(inputId);
     if (!input) return;
-    const errorMsg = input.nextElementSibling;
+    
+    // Find the next sibling that is a 'form-error-msg'
+    let errorMsg = input.nextElementSibling;
+    while(errorMsg && !errorMsg.classList.contains('form-error-msg')) {
+        errorMsg = errorMsg.nextElementSibling;
+    }
+
     if (errorMsg?.classList.contains('form-error-msg')) {
         input.classList.add('invalid');
         errorMsg.textContent = message;
@@ -176,7 +184,6 @@ window.addEventListener('load', () => {
     
     setupNavListeners();
 
-    // MODIFICATION: Changed listener for the success modal close button
     const closeBtn = document.getElementById('success-modal-close-btn');
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
@@ -218,11 +225,15 @@ function onInitialLoadSuccess(data) {
     APPROVERS_LIST = data.approvers || [];
     RECENT_PURPOSES = data.recentPurposes || [];
     RECENT_STATIONS = data.recentStations || [];
+    EMPLOYEE_POSITIONS = data.employeePositions || [];
+    ENGINEER_POSITIONS = data.engineerPositions || []; // MODIFICATION: Store engineer positions
     
     console.log("Travel Orders:", ALL_TRAVEL_ORDERS.length);
     console.log("Employees:", EMPLOYEES_LIST.length);
     console.log("Project Engineers:", PROJECT_ENGINEERS.length);
     console.log("Approvers:", APPROVERS_LIST.length);
+    console.log("Employee Positions:", EMPLOYEE_POSITIONS.length);
+    console.log("Engineer Positions:", ENGINEER_POSITIONS.length); // MODIFICATION
     
     loadDashboardView();
 }
@@ -490,6 +501,8 @@ function onPdfSuccess(result) {
                 APPROVERS_LIST = data.approvers || [];
                 RECENT_PURPOSES = data.recentPurposes || [];
                 RECENT_STATIONS = data.recentStations || [];
+                EMPLOYEE_POSITIONS = data.employeePositions || []; 
+                ENGINEER_POSITIONS = data.engineerPositions || []; // MODIFICATION: Refresh positions
                 
                 if (CURRENT_VIEW === 'travel-orders') {
                     populateDashboardTable(ALL_TRAVEL_ORDERS);
@@ -545,6 +558,4 @@ function closeSuccessModal() {
     }
 }
 </script>
-
-
 
