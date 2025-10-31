@@ -229,7 +229,7 @@ function handleNewToSubmit(e) {
         document.getElementById('save-to-btn').disabled = true;
         
         google.script.run
-            .withSuccessHandler(onSaveSuccess)
+            .withSuccessHandler(onSaveSuccess) // This already handles PDF generation
             .withFailureHandler(onSaveFailure)
             .saveTravelOrder(formData);
     }
@@ -506,6 +506,7 @@ function validateUpdateToForm() {
     };
 }
 
+// MODIFICATION: handleUpdateToSubmit now calls update, then generates PDF
 function handleUpdateToSubmit(e) {
     e.preventDefault();
     const formData = validateUpdateToForm();
@@ -515,16 +516,18 @@ function handleUpdateToSubmit(e) {
         showLoader("Updating Travel Order...");
         document.getElementById('update-to-btn').disabled = true;
         
+        // Step 1: Call updateTravelOrder
         google.script.run
-            .withSuccessHandler(onUpdateSuccess)
+            .withSuccessHandler(result => onUpdateSuccess(result, toId)) // Pass toId
             .withFailureHandler(onUpdateFailure)
             .updateTravelOrder(formData, toId);
     }
 }
 
-function onUpdateSuccess(result) {
+// MODIFICATION: onUpdateSuccess now triggers the PDF generation
+function onUpdateSuccess(result, toId) { // Receive toId
     if (result.success) {
-        // Update global data
+        // Update global data (Step 1 successful)
         const index = ALL_TRAVEL_ORDERS.findIndex(to => to.TO_ID === result.updatedRecord.TO_ID);
         if (index !== -1) {
             ALL_TRAVEL_ORDERS[index] = result.updatedRecord;
@@ -532,13 +535,13 @@ function onUpdateSuccess(result) {
             ALL_TRAVEL_ORDERS.push(result.updatedRecord);
         }
 
+        // Recalculate latest date prepared
         const newDatePrepared = new Date(result.updatedRecord.Date_Prepared);
         const latest = LATEST_DATE_PREPARED ? new Date(LATEST_DATE_PREPARED) : null;
         
         if (!latest || newDatePrepared > latest) {
             LATEST_DATE_PREPARED = newDatePrepared;
         } else if (latest && newDatePrepared.toISOString() === latest.toISOString()) {
-            // Recalculate latest date if the updated one was the latest
             LATEST_DATE_PREPARED = ALL_TRAVEL_ORDERS.reduce((max, to) => {
                 const d = new Date(to.Date_Prepared);
                 return d > max ? d : max;
@@ -547,27 +550,53 @@ function onUpdateSuccess(result) {
         
         _successModalRedirect = 'travel_orders'; // Set redirect logic
 
-        // Show success modal
-        showSuccessModal(
-            "Update Successful!",
-            "Travel Order has been updated and PDF re-generated.",
-            result.updatedRecord.TO_ID,
-            result.pdfUrl
-        );
-        
-        // Re-enable button, hide loader
-        document.getElementById('update-to-btn').disabled = false;
-        hideLoader();
+        // Step 2: Now generate the PDF
+        showLoader("Re-generating PDF...");
+        google.script.run
+            .withSuccessHandler(onPdfGenerateSuccess) // New handler for PDF
+            .withFailureHandler(onUpdateFailure) // Can reuse update failure
+            .generateAndLinkPdf(toId, null); // Call PDF generation
 
     } else {
         onUpdateFailure({ message: result.error });
     }
 }
 
+// MODIFICATION: New function to handle the success of PDF generation *after* update
+function onPdfGenerateSuccess(pdfResult) {
+    if (pdfResult.success) {
+        // PDF generation is complete, now find the fully updated record
+        // We need to refresh the local data
+        const updatedRecord = ALL_TRAVEL_ORDERS.find(to => to.TO_ID === pdfResult.toId);
+        if (updatedRecord) {
+             updatedRecord.PDF_Link = pdfResult.pdfUrl;
+             updatedRecord.Status = "Completed";
+        }
+        
+        // Show success modal
+        showSuccessModal(
+            "Update Successful!",
+            "Travel Order has been updated and PDF re-generated.",
+            pdfResult.toId, // Use toId from pdfResult
+            pdfResult.pdfUrl
+        );
+        
+        // Re-enable button, hide loader
+        const updateBtn = document.getElementById('update-to-btn');
+        if (updateBtn) updateBtn.disabled = false;
+        hideLoader();
+
+    } else {
+         onUpdateFailure({ message: pdfResult.error });
+    }
+}
+
+
 function onUpdateFailure(error) {
-    console.error("Update Error:", error);
+    console.error("Update/PDF Error:", error);
     showToast("Update Failed: " + error.message, true);
-    document.getElementById('update-to-btn').disabled = false;
+    const updateBtn = document.getElementById('update-to-btn');
+    if (updateBtn) updateBtn.disabled = false;
     hideLoader();
 }
 
