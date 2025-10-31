@@ -72,10 +72,47 @@
     </div>
     <!-- End Success Modal -->
 
+    <!-- Admin Password Modal -->
+    <div id="admin-password-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4">
+            <div class="bg-gradient-to-r from-red-600 to-pink-600 p-6 rounded-t-2xl">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-white bg-opacity-30 rounded-full flex items-center justify-center">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                        </svg>
+                    </div>
+                    <h2 id="admin-modal-title" class="text-2xl font-bold text-white">Admin Unlock</h2>
+                </div>
+            </div>
+            <form id="admin-password-form">
+                <div class="p-6 space-y-4">
+                    <p id="admin-modal-message" class="text-gray-700">This item is locked. Please enter the admin password to proceed.</p>
+                    <div class="input-group">
+                        <label for="admin-password-input" class="input-label">Password</label>
+                        <input type="password" id="admin-password-input" required class="input-field">
+                        <p id="admin-password-error" class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
+                </div>
+                <div class="px-6 py-4 bg-gray-50 rounded-b-2xl flex justify-end gap-3">
+                    <button type="button" id="admin-password-cancel-btn" class="btn-cancel">Cancel</button>
+                    <button type="submit" id="admin-password-submit-btn" class="btn-primary">Unlock</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- End Admin Password Modal -->
+
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     
+    <!-- 
+      MODIFICATION: Changed script load order.
+      1. script-core: Defines all helper functions (showSuccessModal, showLoader, etc.)
+      2. script-views: Defines view loaders (loadDashboardView), which depend on script-core.
+      3. script-forms: Defines form handlers (onPdfGenerateSuccess), which depend on script-core.
+    -->
     <?!= include('script-core'); ?>
-    <?!= include('script-forms'); ?>
     <?!= include('script-views'); ?>
+    <?!= include('script-forms'); ?>
 </body>
 </html>
