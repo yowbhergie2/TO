@@ -37,6 +37,41 @@
         <span id="toast-message">Success!</span>
     </div>
 
+    <!-- MODIFICATION: Added Success Modal -->
+    <div id="success-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+            <div class="bg-gradient-to-r from-green-500 to-emerald-600 p-6 rounded-t-2xl">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-white bg-opacity-30 rounded-full flex items-center justify-center">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <h2 id="success-modal-title" class="text-2xl font-bold text-white">Success!</h2>
+                </div>
+            </div>
+            <div class="p-6 space-y-4">
+                <p id="success-modal-message" class="text-gray-700">Travel Order created successfully.</p>
+                <div class="bg-gray-100 p-4 rounded-lg">
+                    <p class="text-sm font-medium text-gray-500">Travel Order No:</p>
+                    <p id="success-modal-to-id" class="text-lg font-bold text-indigo-600"></p>
+                </div>
+                <div class="bg-gray-100 p-4 rounded-lg">
+                    <p class="text-sm font-medium text-gray-500">PDF Document:</p>
+                    <a id="success-modal-pdf-link" href="#" target="_blank" class="text-lg font-bold text-indigo-600 hover:underline">
+                        Click to View PDF
+                    </a>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 rounded-b-2xl flex justify-end">
+                <button id="success-modal-close-btn" class="btn-primary">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- End Success Modal -->
+
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     
     <?!= include('script-core'); ?>
