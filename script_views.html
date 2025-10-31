@@ -4,15 +4,33 @@ function loadDashboardView() {
     showLoader("Loading Dashboard...");
     updateNavActiveState('dashboard');
 
+    // 1. Get the HTML shell
     google.script.run
         .withSuccessHandler(html => {
-            console.log("Dashboard HTML received, length:", html.length);
+            console.log("Dashboard HTML received");
             document.getElementById('content-area').innerHTML = html;
             
-            setTimeout(() => {
-                console.log("Calling loadDashboardAnalytics with ALL_TRAVEL_ORDERS:", ALL_TRAVEL_ORDERS.length);
-                loadDashboardAnalyticsDirectly();
-            }, 500);
+            // 2. Now, get the data from the server-side function
+            google.script.run
+                .withSuccessHandler(onAnalyticsSuccess)
+                .withFailureHandler(onAnalyticsFailure)
+                .getDashboardAnalytics(); // Call the server-side function
+
+            // 3. Add listener for the new refresh button
+            const refreshBtn = document.getElementById('refresh-analytics-btn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', () => {
+                    console.log("Refresh button clicked");
+                    showLoader("Refreshing Analytics...");
+                    // Clear old data to show "Loading..."
+                    clearAnalytics(); 
+                    
+                    google.script.run
+                        .withSuccessHandler(onAnalyticsSuccess)
+                        .withFailureHandler(onAnalyticsFailure)
+                        .getDashboardAnalytics();
+                });
+            }
         })
         .withFailureHandler(err => {
             console.error("Failed to load dashboard HTML:", err);
@@ -22,119 +40,76 @@ function loadDashboardView() {
         .getDashboardView();
 }
 
+/**
+ * @description Clears analytics to show loading state on refresh.
+ */
+function clearAnalytics() {
+    const loadingText = '<p class="text-gray-400 text-sm text-center py-4">Loading data...</p>';
+    
+    const statTotalOrders = document.getElementById('stat-total-orders');
+    const statCompletedOrders = document.getElementById('stat-completed-orders');
+    const statActiveTravelers = document.getElementById('stat-active-travelers');
+    const statThisMonth = document.getElementById('stat-this-month');
+
+    if (statTotalOrders) statTotalOrders.textContent = '...';
+    if (statCompletedOrders) statCompletedOrders.textContent = '...';
+    if (statActiveTravelers) statActiveTravelers.textContent = '...';
+    if (statThisMonth) statThisMonth.textContent = '...';
+
+    const topTravelersList = document.getElementById('top-travelers-list');
+    if (topTravelersList) topTravelersList.innerHTML = loadingText;
+
+    const topDestinationsList = document.getElementById('top-destinations-list');
+    if (topDestinationsList) topDestinationsList.innerHTML = loadingText;
+    
+    const monthlyTrendChart = document.getElementById('monthly-trend-chart');
+    if (monthlyTrendChart) monthlyTrendChart.innerHTML = loadingText;
+    
+    const modeOfTravelChart = document.getElementById('mode-of-travel-chart');
+    if (modeOfTravelChart) modeOfTravelChart.innerHTML = loadingText;
+}
+
+/**
+ * @description Success handler for fetching dashboard analytics.
+ * @param {object} data The analytics data from the server.
+ */
+function onAnalyticsSuccess(data) {
+    if (data.error) {
+        onAnalyticsFailure({ message: data.error });
+        return;
+    }
+    console.log("Analytics data received:", data);
+    populateDashboardAnalytics(data);
+    hideLoader();
+}
+
+/**
+ * @description Failure handler for fetching dashboard analytics.
+ * @param {object} error The error object.
+ */
+function onAnalyticsFailure(error) {
+    console.error("Failed to load dashboard analytics:", error);
+    showToast("Failed to load analytics: " + error.message, true);
+    
+    // Populate with "Error" or "No data"
+    populateDashboardAnalytics(null); // Pass null to handle empty/error state
+    hideLoader();
+}
+
 function loadDashboardAnalyticsDirectly() {
-    console.log("=== LOADING ANALYTICS DIRECTLY ===");
-    
-    const analyticsData = calculateAnalytics(ALL_TRAVEL_ORDERS);
-    console.log("Analytics calculated:", analyticsData);
-    
-    setTimeout(() => {
-        populateDashboardAnalytics(analyticsData);
-    }, 200);
+    // This function is deprecated, replaced by onAnalyticsSuccess
+    console.warn("loadDashboardAnalyticsDirectly is deprecated.");
 }
 
 function calculateAnalytics(allOrders) {
-    console.log("Calculating analytics for", allOrders.length, "orders");
-    
-    const totalOrders = allOrders.length;
-    const completedOrders = allOrders.filter(o => o.Status === "Completed").length;
-    const pendingOrders = allOrders.filter(o => o.Status === "Pending PDF").length;
-    const errorOrders = allOrders.filter(o => o.Status === "PDF Error").length;
-
-    const employeeStats = {};
-    allOrders.forEach(order => {
-        const employees = Array.isArray(order.Employees) ? order.Employees : [order.Employees];
-        employees.forEach(emp => {
-            if (emp) {
-                employeeStats[emp] = (employeeStats[emp] || 0) + 1;
-            }
-        });
-    });
-
-    const topEmployees = Object.entries(employeeStats)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
-
-    const monthlyStats = {};
-    const now = new Date();
-    for (let i = 11; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        monthlyStats[key] = 0;
-    }
-
-    allOrders.forEach(order => {
-        if (order.Date_Prepared) {
-            const date = new Date(order.Date_Prepared);
-            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            if (monthlyStats.hasOwnProperty(key)) {
-                monthlyStats[key]++;
-            }
-        }
-    });
-
-    const monthlyData = Object.entries(monthlyStats).map(([month, count]) => ({ month, count }));
-
-    const destinationStats = {};
-    allOrders.forEach(order => {
-        if (order.Destination) {
-            destinationStats[order.Destination] = (destinationStats[order.Destination] || 0) + 1;
-        }
-    });
-
-    const topDestinations = Object.entries(destinationStats)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-    const modeStats = {};
-    allOrders.forEach(order => {
-        if (order.Mode_of_Travel) {
-            modeStats[order.Mode_of_Travel] = (modeStats[order.Mode_of_Travel] || 0) + 1;
-        }
-    });
-
-    const travelModes = Object.entries(modeStats)
-        .map(([mode, count]) => ({ mode, count }))
-        .sort((a, b) => b.count - a.count);
-
-    const purposeStats = {};
-    allOrders.forEach(order => {
-        if (order.Purpose) {
-            purposeStats[order.Purpose] = (purposeStats[order.Purpose] || 0) + 1;
-        }
-    });
-
-    const topPurposes = Object.entries(purposeStats)
-        .map(([purpose, count]) => ({ purpose, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-    const recentOrders = allOrders
-        .sort((a, b) => {
-            const dateA = a.Created_Date ? new Date(a.Created_Date) : new Date(0);
-            const dateB = b.Created_Date ? new Date(b.Created_Date) : new Date(0);
-            return dateB - dateA;
-        })
-        .slice(0, 5);
-
-    return {
-        summary: {
-            total: totalOrders,
-            completed: completedOrders,
-            pending: pendingOrders,
-            error: errorOrders
-        },
-        employeeStats: topEmployees,
-        monthlyStats: monthlyData,
-        destinationStats: topDestinations,
-        travelModes: travelModes,
-        purposeStats: topPurposes,
-        recentOrders: recentOrders
-    };
+    // This function is deprecated, analytics are now server-side.
+    console.warn("calculateAnalytics is deprecated.");
 }
 
+/**
+ * @description Populates the dashboard elements with analytics data.
+ * @param {object | null} data The analytics data. If null, shows error/empty state.
+ */
 function populateDashboardAnalytics(data) {
     console.log("=== POPULATING DASHBOARD ANALYTICS ===");
     
@@ -143,18 +118,18 @@ function populateDashboardAnalytics(data) {
     const statActiveTravelers = document.getElementById('stat-active-travelers');
     const statThisMonth = document.getElementById('stat-this-month');
     
-    if (statTotalOrders) statTotalOrders.textContent = data.summary.total;
-    if (statCompletedOrders) statCompletedOrders.textContent = data.summary.completed;
-    if (statActiveTravelers) statActiveTravelers.textContent = data.employeeStats.length;
+    if (statTotalOrders) statTotalOrders.textContent = data?.summary?.total ?? 0;
+    if (statCompletedOrders) statCompletedOrders.textContent = data?.summary?.completed ?? 0;
+    if (statActiveTravelers) statActiveTravelers.textContent = data?.employeeStats?.length ?? 0;
     
     const currentMonth = new Date().toISOString().substring(0, 7);
-    const thisMonthData = data.monthlyStats.find(m => m.month === currentMonth);
+    const thisMonthData = data?.monthlyStats?.find(m => m.month === currentMonth);
     if (statThisMonth) statThisMonth.textContent = thisMonthData ? thisMonthData.count : 0;
 
     const topTravelersList = document.getElementById('top-travelers-list');
     if (topTravelersList) {
         topTravelersList.innerHTML = '';
-        if (data.employeeStats && data.employeeStats.length > 0) {
+        if (data?.employeeStats && data.employeeStats.length > 0) {
             data.employeeStats.forEach((emp, index) => {
                 const colors = ['bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-violet-500'];
                 const color = colors[index % colors.length];
@@ -177,7 +152,7 @@ function populateDashboardAnalytics(data) {
     const topDestinationsList = document.getElementById('top-destinations-list');
     if (topDestinationsList) {
         topDestinationsList.innerHTML = '';
-        if (data.destinationStats && data.destinationStats.length > 0) {
+        if (data?.destinationStats && data.destinationStats.length > 0) {
             data.destinationStats.forEach((dest, index) => {
                 const colors = ['bg-pink-500', 'bg-rose-500', 'bg-red-500', 'bg-orange-500', 'bg-amber-500'];
                 const color = colors[index % colors.length];
@@ -200,7 +175,7 @@ function populateDashboardAnalytics(data) {
     const monthlyTrendChart = document.getElementById('monthly-trend-chart');
     if (monthlyTrendChart) {
         monthlyTrendChart.innerHTML = '';
-        if (data.monthlyStats && data.monthlyStats.length > 0) {
+        if (data?.monthlyStats && data.monthlyStats.length > 0) {
             const maxMonthly = Math.max(...data.monthlyStats.map(m => m.count), 1);
             data.monthlyStats.forEach(month => {
                 const percentage = (month.count / maxMonthly) * 100;
@@ -227,7 +202,7 @@ function populateDashboardAnalytics(data) {
     const modeOfTravelChart = document.getElementById('mode-of-travel-chart');
     if (modeOfTravelChart) {
         modeOfTravelChart.innerHTML = '';
-        if (data.travelModes && data.travelModes.length > 0) {
+        if (data?.travelModes && data.travelModes.length > 0) {
             data.travelModes.forEach((mode, index) => {
                 const colors = ['bg-teal-500', 'bg-green-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-lime-500'];
                 const color = colors[index % colors.length];
@@ -247,8 +222,7 @@ function populateDashboardAnalytics(data) {
         }
     }
 
-    console.log("Dashboard analytics populated successfully!");
-    hideLoader();
+    console.log("Dashboard analytics populated!");
 }
 
 function loadTravelOrdersView() {
@@ -400,8 +374,9 @@ function showViewModal(toId) {
         employeesDisplay = employeesDisplay.join(', ');
     }
 
+    // MODIFICATION: Use new sticky modal structure
     content.innerHTML = `
-        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-t-2xl">
+        <div class="modal-header-sticky">
             <div class="flex justify-between items-start">
                 <div>
                     <h2 class="text-2xl font-bold text-white">${order.TO_ID}</h2>
@@ -414,7 +389,7 @@ function showViewModal(toId) {
                 </button>
             </div>
         </div>
-        <div class="p-6">
+        <div class="modal-body-scrollable">
             <div class="detail-row">
                 <span class="detail-label">Date Prepared:</span>
                 <span class="detail-value">${formatDateForDisplay(order.Date_Prepared)}</span>
@@ -469,7 +444,7 @@ function showViewModal(toId) {
                 </span>
             </div>` : ''}
         </div>
-        <div class="px-6 py-4 bg-gray-50 rounded-b-2xl flex justify-end gap-3">
+        <div class="modal-footer-sticky">
             <button onclick="closeViewModal()" class="btn-cancel inline-flex items-center">Close</button>
             <button onclick="closeViewModal(); loadUpdateView('${order.TO_ID}')" class="btn-primary inline-flex items-center">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -495,7 +470,7 @@ function loadMasterDataView() {
             
             setTimeout(() => {
                 populateMasterData();
-                setupMasterDataListeners();
+                setupMasterDataListeners(); // This function will be modified
                 hideLoader();
             }, 200);
         })
@@ -521,6 +496,17 @@ function setupMasterDataListeners() {
             document.getElementById(`${tabName}-tab`).classList.remove('hidden');
         });
     });
+
+    // MODIFICATION: Add listener for the new edit form
+    const editForm = document.getElementById('edit-form');
+    if (editForm) {
+        editForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const oldName = document.getElementById('edit-old-name').value;
+            const type = document.getElementById('edit-type').value;
+            handleEditSubmit(type, oldName);
+        });
+    }
 }
 
 function populateMasterData() {
@@ -547,8 +533,9 @@ function populateMasterList(type, data) {
     activeContainer.innerHTML = '';
     inactiveContainer.innerHTML = '';
 
-    const activeItems = data.filter(item => item.status === 'ACTIVE');
-    const inactiveItems = data.filter(item => item.status === 'INACTIVE');
+    // MODIFICATION: Check for 'INACTIVE' specifically. Treat empty or other values as 'ACTIVE'.
+    const activeItems = data.filter(item => item.status.trim().toUpperCase() !== 'INACTIVE');
+    const inactiveItems = data.filter(item => item.status.trim().toUpperCase() === 'INACTIVE');
 
     activeItems.forEach(item => {
         const clone = template.content.cloneNode(true);
@@ -567,6 +554,11 @@ function populateMasterList(type, data) {
         const btn = clone.querySelector('.toggle-status-btn');
         btn.title = 'Set as Inactive';
         btn.addEventListener('click', () => toggleStatus(type, item.name, 'INACTIVE', item.position, item.employeeId));
+        
+        // MODIFICATION: Add listener for the new edit button
+        const editBtn = clone.querySelector('.edit-item-btn');
+        editBtn.addEventListener('click', () => showEditForm(type, item.name, item.position, item.employeeId));
+        
         activeContainer.appendChild(clone);
     });
 
@@ -588,6 +580,11 @@ function populateMasterList(type, data) {
         const btn = clone.querySelector('.toggle-status-btn');
         btn.title = 'Set as Active';
         btn.addEventListener('click', () => toggleStatus(type, item.name, 'ACTIVE', item.position, item.employeeId));
+
+        // MODIFICATION: Add listener for the new edit button
+        const editBtn = clone.querySelector('.edit-item-btn');
+        editBtn.addEventListener('click', () => showEditForm(type, item.name, item.position, item.employeeId));
+        
         inactiveContainer.appendChild(clone);
     });
 
@@ -705,4 +702,112 @@ function handleAddSubmit(type) {
         })
         .saveMasterData(type, data);
 }
+
+// MODIFICATION: Added functions for Edit Modal
+
+/**
+ * @description Shows the modal for editing a master data entry.
+ * @param {string} type - 'employee', 'engineer', or 'approver'
+ * @param {string} name - The current name of the item.
+ * @param {string} position - The current position (if approver).
+ * @param {string} employeeId - The current employee ID (if employee).
+ */
+function showEditForm(type, name, position, employeeId) {
+    const modal = document.getElementById('edit-modal');
+    const titleMap = {
+        employee: 'Edit Employee',
+        engineer: 'Edit Project Engineer',
+        approver: 'Edit Approver'
+    };
+
+    document.getElementById('edit-modal-title').textContent = titleMap[type];
+    document.getElementById('edit-name').value = name;
+    document.getElementById('edit-old-name').value = name; // Store the original name for lookup
+    document.getElementById('edit-type').value = type;
+
+    const employeeIdGroup = document.getElementById('edit-employee-id-group');
+    const positionGroup = document.getElementById('edit-position-group');
+
+    if (type === 'employee') {
+        employeeIdGroup.classList.remove('hidden');
+        document.getElementById('edit-employee-id').value = employeeId || '';
+        positionGroup.classList.add('hidden');
+        document.getElementById('edit-position').required = false;
+    } else if (type === 'approver') {
+        employeeIdGroup.classList.add('hidden');
+        positionGroup.classList.remove('hidden');
+        document.getElementById('edit-position').value = position || '';
+        document.getElementById('edit-position').required = true;
+    } else { // engineer
+        employeeIdGroup.classList.add('hidden');
+        positionGroup.classList.add('hidden');
+        document.getElementById('edit-position').required = false;
+    }
+
+    modal.classList.remove('hidden');
+}
+
+/**
+ * @description Closes the edit modal.
+ */
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+}
+
+/**
+ * @description Handles the submission of the edit form.
+ * @param {string} type - 'employee', 'engineer', or 'approver'.
+ * @param {string} oldName - The original name used to find the record.
+ */
+function handleEditSubmit(type, oldName) {
+    const newName = document.getElementById('edit-name').value.trim();
+    const employeeId = document.getElementById('edit-employee-id').value.trim();
+    const position = document.getElementById('edit-position').value.trim();
+
+    if (!newName) {
+        showToast("Name is required", true);
+        return;
+    }
+
+    if (type === 'approver' && !position) {
+        showToast("Position is required", true);
+        return;
+    }
+
+    showLoader("Updating entry...");
+    closeEditModal();
+
+    // Find the original item to get its status (status is not edited in this form)
+    const listMap = { employee: EMPLOYEES_LIST, engineer: PROJECT_ENGINEERS, approver: APPROVERS_LIST };
+    const list = listMap[type];
+    const originalItem = list.find(i => i.name === oldName);
+    const currentStatus = originalItem ? originalItem.status : 'ACTIVE'; // Default to ACTIVE if something goes wrong
+
+    const data = { 
+        name: newName, 
+        status: currentStatus // Preserve the existing status
+    };
+    if (type === 'employee') data.employeeId = employeeId || "";
+    if (type === 'approver') data.position = position;
+
+    google.script.run
+        .withSuccessHandler(() => {
+            // Update the item in the global list
+            if (originalItem) {
+                originalItem.name = newName;
+                if (type === 'employee') originalItem.employeeId = employeeId || "";
+                if (type === 'approver') originalItem.position = position;
+            }
+
+            populateMasterData();
+            showToast("Entry updated successfully!");
+            hideLoader();
+        })
+        .withFailureHandler((error) => {
+            showToast("Failed to update entry: " + error.message, true);
+            hideLoader();
+        })
+        .updateMasterData(type, oldName, data);
+}
 </script>
+
