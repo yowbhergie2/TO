@@ -6,6 +6,8 @@ const DB_SHEET_NAME = "Travel Orders";
 const PROJECT_ENGINEER_MASTER_SHEET = "Project Engineer Master";
 const EMPLOYEES_MASTER_SHEET = "Employees Master";
 const APPROVERS_MASTER_SHEET = "Approvers Master";
+const PW_SHEET_NAME = "PW"; // For password
+const ACTIVITY_LOG_SHEET = "Activity Log"; // MODIFICATION: New Log Sheet
 const TO_ID_PREFIX = "RO2.2";
 const TO_ID_CONNECTOR = "-JO";
 const HEADERS = [
@@ -14,6 +16,38 @@ const HEADERS = [
   "Status", "PDF_Link", "Created_By", "Created_Date", "Last_Modified_By", "Last_Modified_Date"
 ];
 const DATE_COLUMNS = [2, 3, 4, 11, 15, 17];
+
+/**
+ * @description Writes an activity log to the 'Activity Log' sheet.
+ * @param {string} action The action performed (e.g., "Create TO", "Update Master Data").
+ * @param {string} details Specific details about the action (e.g., "Created TO-2025-00001").
+ */
+function logActivity(action, details) {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(ACTIVITY_LOG_SHEET);
+    const userEmail = Session.getActiveUser().getEmail() || "Unknown User";
+    const timestamp = new Date();
+
+    if (!sheet) {
+      // Create sheet if it doesn't exist
+      const newSheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).insertSheet(ACTIVITY_LOG_SHEET);
+      newSheet.appendRow(["Timestamp", "User", "Action", "Details"]);
+      newSheet.setFrozenRows(1);
+      newSheet.getRange("A1:D1").setFontWeight("bold");
+      newSheet.appendRow([timestamp, userEmail, action, details]);
+    } else {
+      sheet.appendRow([timestamp, userEmail, action, details]);
+      
+      // Optional: Trim the log to prevent it from getting too large
+      const maxRows = 1000;
+      if (sheet.getLastRow() > maxRows) {
+        sheet.deleteRows(2, sheet.getLastRow() - maxRows); // Delete oldest rows
+      }
+    }
+  } catch (e) {
+    Logger.log("Failed to log activity: " + e.message);
+  }
+}
 
 function onOpen(e) {
   SpreadsheetApp.getUi()
@@ -49,11 +83,19 @@ function doGet(e) {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
 }
 
+function checkAdminPassword(password) {
+  const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PW_SHEET_NAME);
+  if (sheet) {
+    const correctPassword = sheet.getRange("A1").getValue();
+    return password === correctPassword;
+  }
+  return false; // Fallback if PW sheet doesn't exist
+}
+
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-// MODIFICATION: Added Position to Project Engineers
 function getProjectEngineers() {
   try {
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PROJECT_ENGINEER_MASTER_SHEET);
@@ -163,7 +205,6 @@ function getApprovers() {
   }
 }
 
-// MODIFICATION: Added function to get unique employee positions
 function getEmployeePositions() {
   try {
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(EMPLOYEES_MASTER_SHEET);
@@ -183,7 +224,6 @@ function getEmployeePositions() {
   }
 }
 
-// MODIFICATION: Added new function to get unique engineer positions
 function getEngineerPositions() {
   try {
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PROJECT_ENGINEER_MASTER_SHEET);
@@ -199,6 +239,44 @@ function getEngineerPositions() {
     return [...new Set(positions)]; // Return unique list
   } catch (e) {
     Logger.log("Error fetching engineer positions: " + e);
+    return [];
+  }
+}
+
+/**
+ * @description Fetches the last 15 activity logs.
+ * @returns {Array<Object>} An array of log objects.
+ */
+function getActivityLog() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(ACTIVITY_LOG_SHEET);
+    if (!sheet) {
+      return []; // No log sheet yet
+    }
+    
+    const lastRow = sheet.getLastRow();
+    const startRow = Math.max(2, lastRow - 14); // Get last 15 entries (or fewer)
+    const numRows = lastRow - startRow + 1;
+
+    if (numRows <= 0) {
+      return []; // No data other than header
+    }
+
+    const data = sheet.getRange(startRow, 1, numRows, 4).getValues();
+    const headers = ["timestamp", "user", "action", "details"];
+    
+    const logs = data.map(row => {
+      let obj = {};
+      obj.timestamp = new Date(row[0]).toISOString(); // Format timestamp
+      obj.user = row[1];
+      obj.action = row[2];
+      obj.details = row[3];
+      return obj;
+    });
+
+    return logs.reverse(); // Return newest first
+  } catch (e) {
+    Logger.log("Error fetching activity log: " + e);
     return [];
   }
 }
@@ -241,35 +319,19 @@ function getRecentStations() {
 
 function getInitialData() {
   try {
-    Logger.log("=== getInitialData called ===");
-
+    Logger.log("getInitialData called");
+    
     const data = getAllTravelOrders();
-    Logger.log("✓ Travel orders loaded: " + data.length);
-
     const latestDate = getLatestDatePrepared();
-    Logger.log("✓ Latest date prepared: " + (latestDate ? latestDate.toISOString() : "null"));
-
     const projectEngineers = getProjectEngineers();
-    Logger.log("✓ Project Engineers loaded: " + projectEngineers.length);
-
     const employees = getEmployees();
-    Logger.log("✓ Employees loaded: " + employees.length);
-
     const approvers = getApprovers();
-    Logger.log("✓ Approvers loaded: " + approvers.length);
-
     const recentPurposes = getRecentPurposes();
-    Logger.log("✓ Recent Purposes loaded: " + recentPurposes.length);
-
     const recentStations = getRecentStations();
-    Logger.log("✓ Recent Stations loaded: " + recentStations.length);
-
-    const employeePositions = getEmployeePositions();
-    Logger.log("✓ Employee Positions loaded: " + employeePositions.length);
-
-    const engineerPositions = getEngineerPositions();
-    Logger.log("✓ Engineer Positions loaded: " + engineerPositions.length);
-
+    const employeePositions = getEmployeePositions(); 
+    const engineerPositions = getEngineerPositions(); 
+    
+    // FIX: Replaced [... existing code ...] with actual properties
     const result = {
       travelOrders: data,
       latestDate: latestDate ? latestDate.toISOString() : null,
@@ -278,16 +340,18 @@ function getInitialData() {
       approvers: approvers,
       recentPurposes: recentPurposes,
       recentStations: recentStations,
-      employeePositions: employeePositions,
-      engineerPositions: engineerPositions
+      employeePositions: employeePositions, 
+      engineerPositions: engineerPositions 
     };
-
-    Logger.log("=== getInitialData SUCCESS - Returning data ===");
+    
+    Logger.log("getInitialData returning " + data.length + " travel orders");
+    Logger.log("Project Engineers: " + projectEngineers.length);
+    Logger.log("Employees: " + employees.length);
+    Logger.log("Approvers: " + approvers.length);
     return result;
   } catch (e) {
-    Logger.log("=== ERROR in getInitialData ===");
-    Logger.log("ERROR: " + e.message);
-    Logger.log("STACK: " + e.stack);
+    Logger.log("ERROR in getInitialData: " + e.message);
+    Logger.log(e.stack);
     return { error: e.message };
   }
 }
@@ -408,6 +472,8 @@ function saveTravelOrder(form) {
     const pdfResult = generateAndLinkPdf(toId, newRowNumber);
     const newRecord = getTravelOrderById(toId);
     
+    logActivity("Create TO", `Created Travel Order: ${toId}`); // MODIFICATION: Log activity
+    
     return { success: true, newRecord: newRecord, pdfUrl: pdfResult.pdfUrl };
 
   } catch (e) {
@@ -454,7 +520,9 @@ function updateTravelOrder(form, toId) {
       "Requesting_Officer": form.requestingOfficer.toUpperCase(),
       "Date_Submission_Travel_Report": Utilities.formatDate(submission, "Asia/Manila", "yyyy-MM-dd"),
       "Last_Modified_By": Session.getActiveUser().getEmail(),
-      "Last_Modified_Date": new Date()
+      "Last_Modified_Date": new Date(),
+      "Status": "Pending PDF", // MODIFICATION: Reset status to Pending PDF
+      "PDF_Link": "" // MODIFICATION: Clear old PDF link
     };
 
     headers.forEach((header, index) => {
@@ -463,9 +531,16 @@ function updateTravelOrder(form, toId) {
       }
     });
 
-    const pdfResult = generateAndLinkPdf(toId, rowNumber);
+    // MODIFICATION: Do NOT generate PDF here. Just log and return.
+    // const pdfResult = generateAndLinkPdf(toId, rowNumber); 
+    
     const updatedRecord = getTravelOrderById(toId);
-    return { success: true, updatedRecord: updatedRecord, pdfUrl: pdfResult.pdfUrl };
+    
+    logActivity("Update TO", `Updated Travel Order: ${toId}. PDF will be re-generated.`); // MODIFICATION: Log activity
+    
+    // MODIFICATION: Return success without pdfUrl.
+    // We will call generateAndLinkPdf separately.
+    return { success: true, updatedRecord: updatedRecord, pdfUrl: null }; // Return null for pdfUrl
 
   } catch (e) {
     Logger.log(e);
@@ -624,6 +699,8 @@ function generateAndLinkPdf(toId, rowNumber) {
     sheet.getRange(rowNumber, pdfLinkCol).setValue(pdfUrl);
     sheet.getRange(rowNumber, statusCol).setValue("Completed");
     
+    logActivity("Generate PDF", `Generated PDF for: ${toId}`); // MODIFICATION: Log activity
+    
     return { success: true, pdfUrl: pdfUrl };
 
   } catch (e) {
@@ -671,6 +748,8 @@ function saveMasterData(type, data) {
     }
 
     sheet.appendRow(newRow);
+    
+    logActivity("Master Data Add", `Added new ${type}: ${data.name}`); // MODIFICATION: Log activity
 
     return { success: true };
   } catch (e) {
@@ -724,6 +803,8 @@ function updateMasterData(type, key, newData) {
         sheet.getRange(rowNumber, index + 1).setValue(newData.employeeId);
       }
     });
+    
+    logActivity("Master Data Update", `Updated ${type}: ${key}`); // MODIFICATION: Log activity
 
     return { success: true };
   } catch (e) {
@@ -772,6 +853,8 @@ function setExclusiveActiveApprover(name, activeApproverData) {
     if (newActiveRow === -1) {
       throw new Error(`Approver with name '${name}' not found to set as active.`);
     }
+    
+    logActivity("Master Data Update", `Set active approver: ${name}`); // MODIFICATION: Log activity
 
     return { success: true };
   } catch (e) {
@@ -830,17 +913,8 @@ function getDashboardAnalytics() {
       count
     }));
 
-    const destinationStats = {};
-    allOrders.forEach(order => {
-      if (order.Destination) {
-        destinationStats[order.Destination] = (destinationStats[order.Destination] || 0) + 1;
-      }
-    });
-
-    const topDestinations = Object.entries(destinationStats)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
+    // MODIFICATION: Get Activity Log instead of Top Destinations
+    const activityLog = getActivityLog();
 
     const modeStats = {};
     allOrders.forEach(order => {
@@ -873,6 +947,7 @@ function getDashboardAnalytics() {
       })
       .slice(0, 5);
 
+    // FIX: Replaced [... existing code ...] with actual properties
     return {
       summary: {
         total: totalOrders,
@@ -882,7 +957,7 @@ function getDashboardAnalytics() {
       },
       employeeStats: topEmployees,
       monthlyStats: monthlyData,
-      destinationStats: topDestinations,
+      activityLog: activityLog, 
       travelModes: travelModes,
       purposeStats: topPurposes,
       recentOrders: recentOrders
