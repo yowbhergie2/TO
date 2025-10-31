@@ -374,7 +374,6 @@ function showViewModal(toId) {
         employeesDisplay = employeesDisplay.join(', ');
     }
 
-    // MODIFICATION: Use new sticky modal structure
     content.innerHTML = `
         <div class="modal-header-sticky">
             <div class="flex justify-between items-start">
@@ -470,7 +469,22 @@ function loadMasterDataView() {
             
             setTimeout(() => {
                 populateMasterData();
-                setupMasterDataListeners(); // This function will be modified
+                setupMasterDataListeners(); 
+                
+                // MODIFICATION: Populate the new datalist with COMBINED positions
+                const datalist = document.getElementById('position-datalist');
+                if (datalist) {
+                    datalist.innerHTML = ''; // Clear old
+                    const allPositions = [...new Set([...EMPLOYEE_POSITIONS, ...ENGINEER_POSITIONS])];
+                    allPositions.forEach(pos => {
+                        if (pos) { // Ensure not empty
+                            const option = document.createElement('option');
+                            option.value = pos;
+                            datalist.appendChild(option);
+                        }
+                    });
+                }
+                
                 hideLoader();
             }, 200);
         })
@@ -497,14 +511,13 @@ function setupMasterDataListeners() {
         });
     });
 
-    // MODIFICATION: Add listener for the new edit form
     const editForm = document.getElementById('edit-form');
     if (editForm) {
         editForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const oldName = document.getElementById('edit-old-name').value;
+            const key = document.getElementById('edit-key').value; 
             const type = document.getElementById('edit-type').value;
-            handleEditSubmit(type, oldName);
+            handleEditSubmit(type, key); 
         });
     }
 }
@@ -533,57 +546,91 @@ function populateMasterList(type, data) {
     activeContainer.innerHTML = '';
     inactiveContainer.innerHTML = '';
 
-    // MODIFICATION: Check for 'INACTIVE' specifically. Treat empty or other values as 'ACTIVE'.
     const activeItems = data.filter(item => item.status.trim().toUpperCase() !== 'INACTIVE');
     const inactiveItems = data.filter(item => item.status.trim().toUpperCase() === 'INACTIVE');
 
     activeItems.forEach(item => {
         const clone = template.content.cloneNode(true);
-        clone.querySelector('.item-name').textContent = item.name;
+        const itemDiv = clone.querySelector('.master-item');
+        itemDiv.querySelector('.item-name').textContent = item.name;
 
-        if (item.employeeId) {
-            clone.querySelector('.item-employee-id').textContent = `ID: ${item.employeeId}`;
-            clone.querySelector('.item-employee-id').classList.remove('hidden');
+        let key, employeeId, position;
+        if (type === 'employees') {
+            key = item.employeeId;
+            employeeId = item.employeeId;
+            position = item.position;
+            const empIdEl = clone.querySelector('.item-employee-id');
+            empIdEl.textContent = `ID: ${employeeId}`;
+            empIdEl.classList.remove('hidden');
+        } else {
+            key = item.name;
+            employeeId = null; 
+            position = (type === 'approvers' || type === 'engineers') ? item.position : null; // MODIFICATION: Also for engineers
         }
 
-        if (item.position) {
-            clone.querySelector('.item-position').textContent = item.position;
-            clone.querySelector('.item-position').classList.remove('hidden');
+        if (position) {
+            const posEl = clone.querySelector('.item-position');
+            posEl.textContent = position;
+            posEl.classList.remove('hidden');
+        } else {
+            clone.querySelector('.item-position').classList.add('hidden');
         }
 
-        const btn = clone.querySelector('.toggle-status-btn');
-        btn.title = 'Set as Inactive';
-        btn.addEventListener('click', () => toggleStatus(type, item.name, 'INACTIVE', item.position, item.employeeId));
+        // MODIFICATION: Setup toggle switch
+        const toggle = clone.querySelector('.toggle-status-checkbox');
+        toggle.checked = true; // It's active
+        toggle.addEventListener('click', (e) => {
+            const newStatus = e.target.checked ? 'ACTIVE' : 'INACTIVE';
+            toggleStatus(type, key, newStatus);
+        });
         
-        // MODIFICATION: Add listener for the new edit button
         const editBtn = clone.querySelector('.edit-item-btn');
-        editBtn.addEventListener('click', () => showEditForm(type, item.name, item.position, item.employeeId));
+        editBtn.addEventListener('click', () => showEditForm(type, key)); 
         
         activeContainer.appendChild(clone);
     });
 
     inactiveItems.forEach(item => {
         const clone = template.content.cloneNode(true);
-        clone.querySelector('.item-name').textContent = item.name;
-        clone.querySelector('.item-name').classList.add('text-gray-500');
+        const itemDiv = clone.querySelector('.master-item');
+        itemDiv.classList.add('inactive'); // MODIFICATION: Add inactive class for styling
+        itemDiv.querySelector('.item-name').textContent = item.name;
+        itemDiv.querySelector('.item-name').classList.add('text-gray-500');
 
-        if (item.employeeId) {
-            clone.querySelector('.item-employee-id').textContent = `ID: ${item.employeeId}`;
-            clone.querySelector('.item-employee-id').classList.remove('hidden');
+        let key, employeeId, position;
+        if (type === 'employees') {
+            key = item.employeeId;
+            employeeId = item.employeeId;
+            position = item.position;
+            const empIdEl = clone.querySelector('.item-employee-id');
+            empIdEl.textContent = `ID: ${employeeId}`;
+            empIdEl.classList.remove('hidden');
+            empIdEl.classList.add('text-gray-500');
+        } else {
+            key = item.name;
+            employeeId = null; 
+            position = (type === 'approvers' || type === 'engineers') ? item.position : null; // MODIFICATION: Also for engineers
         }
 
-        if (item.position) {
-            clone.querySelector('.item-position').textContent = item.position;
-            clone.querySelector('.item-position').classList.remove('hidden');
+        if (position) {
+            const posEl = clone.querySelector('.item-position');
+            posEl.textContent = position;
+            posEl.classList.remove('hidden');
+            posEl.classList.add('text-gray-500'); 
+        } else {
+            clone.querySelector('.item-position').classList.add('hidden');
         }
 
-        const btn = clone.querySelector('.toggle-status-btn');
-        btn.title = 'Set as Active';
-        btn.addEventListener('click', () => toggleStatus(type, item.name, 'ACTIVE', item.position, item.employeeId));
+        // MODIFICATION: Setup toggle switch
+        const toggle = clone.querySelector('.toggle-status-checkbox');
+        toggle.checked = false; // It's inactive
+        toggle.addEventListener('click', (e) => {
+            const newStatus = e.target.checked ? 'ACTIVE' : 'INACTIVE';
+            toggleStatus(type, key, newStatus);
+        });
 
-        // MODIFICATION: Add listener for the new edit button
         const editBtn = clone.querySelector('.edit-item-btn');
-        editBtn.addEventListener('click', () => showEditForm(type, item.name, item.position, item.employeeId));
+        editBtn.addEventListener('click', () => showEditForm(type, key)); 
         
         inactiveContainer.appendChild(clone);
     });
@@ -596,21 +643,38 @@ function populateMasterList(type, data) {
     }
 }
 
-function toggleStatus(type, name, newStatus, position, employeeId) {
+function toggleStatus(type, key, newStatus) { 
+    if (type === 'approvers' && newStatus === 'ACTIVE') {
+        const item = APPROVERS_LIST.find(i => i.name === key);
+        const position = item ? item.position : "";
+        handleSetExclusiveActiveApprover(key, position); 
+        return;
+    }
+
     showLoader("Updating status...");
 
     const typeMap = { employees: 'employee', engineers: 'engineer', approvers: 'approver' };
-    const updateData = { name: name, status: newStatus };
-    if (position) updateData.position = position;
-    if (employeeId) updateData.employeeId = employeeId;
+    
+    const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
+    const list = listMap[type];
+    let item;
+    if (type === 'employees') {
+        item = list.find(i => i.employeeId === key);
+    } else {
+        item = list.find(i => i.name === key);
+    }
+    
+    if (!item) {
+        showToast("Error: Item not found locally.", true);
+        hideLoader();
+        return;
+    }
+    
+    const updateData = { ...item, status: newStatus };
 
     google.script.run
         .withSuccessHandler(() => {
-            const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
-            const list = listMap[type];
-            const item = list.find(i => i.name === name);
-            if (item) item.status = newStatus;
-
+            item.status = newStatus;
             populateMasterData();
             showToast("Status updated successfully!");
             hideLoader();
@@ -618,38 +682,81 @@ function toggleStatus(type, name, newStatus, position, employeeId) {
         .withFailureHandler((error) => {
             showToast("Failed to update status: " + error.message, true);
             hideLoader();
+            populateMasterData(); // Re-populate to revert optimistic toggle
         })
-        .updateMasterData(typeMap[type], name, updateData);
+        .updateMasterData(typeMap[type], key, updateData); 
 }
+
+function handleSetExclusiveActiveApprover(name, position) { 
+    showLoader("Setting active approver...");
+    
+    const activeApproverData = { name: name, status: 'ACTIVE', position: position };
+    
+    google.script.run
+        .withSuccessHandler((result) => {
+            if (result.success) {
+                let otherWasInactive = false;
+                APPROVERS_LIST.forEach(approver => {
+                    if (approver.name === name) {
+                        approver.status = 'ACTIVE';
+                        approver.position = position; 
+                    } else {
+                        if (approver.status === 'ACTIVE') {
+                            otherWasInactive = true;
+                        }
+                        approver.status = 'INACTIVE'; 
+                    }
+                });
+
+                populateMasterData();
+                showToast(otherWasInactive ? "Set active approver and deactivated others." : "Approver set to active.");
+            } else {
+                throw new Error(result.error);
+            }
+            hideLoader();
+        })
+        .withFailureHandler((error) => {
+            showToast("Failed to update approver: " + error.message, true);
+            hideLoader();
+            populateMasterData(); // Re-populate to revert optimistic toggle
+        })
+        .setExclusiveActiveApprover(name, activeApproverData); 
+}
+
 
 function showAddForm(type) {
     const modal = document.getElementById('add-modal');
     const titleMap = {
-        employee: 'Add New Employee',
-        engineer: 'Add New Project Engineer',
-        approver: 'Add New Approver'
+        employees: 'Add New Employee',
+        engineers: 'Add New Project Engineer',
+        approvers: 'Add New Approver'
     };
 
     document.getElementById('add-modal-title').textContent = titleMap[type];
     document.getElementById('add-name').value = '';
     document.getElementById('add-employee-id').value = '';
     document.getElementById('add-position').value = '';
+    
+    clearFormErrors('add-form');
 
     const employeeIdGroup = document.getElementById('add-employee-id-group');
     const positionGroup = document.getElementById('add-position-group');
 
-    if (type === 'employee') {
+    if (type === 'employees') {
         employeeIdGroup.classList.remove('hidden');
-        positionGroup.classList.add('hidden');
-        document.getElementById('add-position').required = false;
-    } else if (type === 'approver') {
+        positionGroup.classList.remove('hidden'); 
+        document.getElementById('add-position').required = false; 
+        document.getElementById('add-employee-id').required = true; 
+    } else if (type === 'approvers') {
         employeeIdGroup.classList.add('hidden');
         positionGroup.classList.remove('hidden');
-        document.getElementById('add-position').required = true;
-    } else {
+        document.getElementById('add-position').required = false; 
+        document.getElementById('add-employee-id').required = false;
+    } else { // engineers
         employeeIdGroup.classList.add('hidden');
-        positionGroup.classList.add('hidden');
+        positionGroup.classList.remove('hidden'); // MODIFICATION: Show position for engineers
         document.getElementById('add-position').required = false;
+        document.getElementById('add-employee-id').required = false;
     }
 
     modal.classList.remove('hidden');
@@ -669,79 +776,131 @@ function handleAddSubmit(type) {
     const name = document.getElementById('add-name').value.trim();
     const employeeId = document.getElementById('add-employee-id').value.trim();
     const position = document.getElementById('add-position').value.trim();
+    
+    clearFormErrors('add-form');
+    let isValid = true;
 
     if (!name) {
-        showToast("Name is required", true);
-        return;
+        showFormError("add-name", "Name is required");
+        isValid = false;
     }
-
-    if (type === 'approver' && !position) {
-        showToast("Position is required", true);
-        return;
+    
+    if (type === 'employees' && !employeeId) {
+        showFormError("add-employee-id", "Employee ID is required");
+        isValid = false;
     }
+    
+    if (!isValid) return;
 
     showLoader("Adding entry...");
     closeAddModal();
 
     const data = { name: name, status: 'ACTIVE' };
-    if (type === 'employee' && employeeId) data.employeeId = employeeId;
-    if (type === 'approver') data.position = position;
-
+    if (type === 'employees') {
+        data.employeeId = employeeId;
+        data.position = position; 
+    }
+    if (type === 'approvers') {
+        data.position = position;
+    }
+    if (type === 'engineers') { // MODIFICATION: Add position for engineers
+        data.position = position;
+    }
+    
+    const typeMap = { employees: 'employee', engineers: 'engineer', approvers: 'approver' };
+    
     google.script.run
         .withSuccessHandler(() => {
-            const listMap = { employee: EMPLOYEES_LIST, engineer: PROJECT_ENGINEERS, approver: APPROVERS_LIST };
-            listMap[type].push(data);
+            const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
+            listMap[type].push(data); 
 
-            populateMasterData();
-            showToast("Entry added successfully!");
-            hideLoader();
+            if (type === 'approvers' && data.status === 'ACTIVE') {
+                handleSetExclusiveActiveApprover(data.name, data.position);
+                hideLoader(); 
+            } else {
+                populateMasterData();
+                showToast("Entry added successfully!");
+                hideLoader();
+            }
         })
         .withFailureHandler((error) => {
             showToast("Failed to add entry: " + error.message, true);
             hideLoader();
         })
-        .saveMasterData(type, data);
+        .saveMasterData(typeMap[type], data); 
 }
+
 
 // MODIFICATION: Added functions for Edit Modal
 
 /**
  * @description Shows the modal for editing a master data entry.
  * @param {string} type - 'employee', 'engineer', or 'approver'
- * @param {string} name - The current name of the item.
- * @param {string} position - The current position (if approver).
- * @param {string} employeeId - The current employee ID (if employee).
+ * @param {string} key - The unique key (Employee_ID for employees, Name for others).
  */
-function showEditForm(type, name, position, employeeId) {
+function showEditForm(type, key) { 
     const modal = document.getElementById('edit-modal');
     const titleMap = {
-        employee: 'Edit Employee',
-        engineer: 'Edit Project Engineer',
-        approver: 'Edit Approver'
+        employees: 'Edit Employee',
+        engineers: 'Edit Project Engineer',
+        approvers: 'Edit Approver'
     };
 
     document.getElementById('edit-modal-title').textContent = titleMap[type];
-    document.getElementById('edit-name').value = name;
-    document.getElementById('edit-old-name').value = name; // Store the original name for lookup
+    document.getElementById('edit-key').value = key; 
     document.getElementById('edit-type').value = type;
+    
+    clearFormErrors('edit-form');
 
+    // Get all fields
+    const nameInput = document.getElementById('edit-name');
+    const employeeIdInput = document.getElementById('edit-employee-id');
+    const positionInput = document.getElementById('edit-position');
+    
+    // Get all groups
     const employeeIdGroup = document.getElementById('edit-employee-id-group');
     const positionGroup = document.getElementById('edit-position-group');
+    
+    const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
+    const list = listMap[type];
+    let item;
+    if (type === 'employees') {
+        item = list.find(i => i.employeeId === key);
+    } else {
+        item = list.find(i => i.name === key);
+    }
+    
+    if (!item) {
+        showToast("Error: Could not find item to edit.", true);
+        return;
+    }
+    
+    const name = item.name;
+    const pos = item.position;
+    const empId = item.employeeId;
+    
+    // Reset fields to default state
+    nameInput.value = name;
+    nameInput.disabled = false;
+    employeeIdInput.value = empId || '';
+    employeeIdInput.disabled = false;
+    positionInput.value = pos || '';
+    positionInput.disabled = false;
+    positionInput.required = false; 
 
-    if (type === 'employee') {
+    if (type === 'employees') { 
         employeeIdGroup.classList.remove('hidden');
-        document.getElementById('edit-employee-id').value = employeeId || '';
-        positionGroup.classList.add('hidden');
-        document.getElementById('edit-position').required = false;
-    } else if (type === 'approver') {
+        employeeIdInput.disabled = true; // Employee ID is disabled
+        positionGroup.classList.remove('hidden'); 
+        nameInput.disabled = false; // Name is editable
+    } else if (type === 'approvers') { 
         employeeIdGroup.classList.add('hidden');
         positionGroup.classList.remove('hidden');
-        document.getElementById('edit-position').value = position || '';
-        document.getElementById('edit-position').required = true;
-    } else { // engineer
+        nameInput.disabled = false; // Name is editable
+    } else { // engineers
         employeeIdGroup.classList.add('hidden');
-        positionGroup.classList.add('hidden');
-        document.getElementById('edit-position').required = false;
+        positionGroup.classList.remove('hidden'); // MODIFICATION: Show position for engineers
+        nameInput.disabled = false; // Name is editable
     }
 
     modal.classList.remove('hidden');
@@ -757,46 +916,51 @@ function closeEditModal() {
 /**
  * @description Handles the submission of the edit form.
  * @param {string} type - 'employee', 'engineer', or 'approver'.
- * @param {string} oldName - The original name used to find the record.
+ * @param {string} key - The original key (Employee_ID or Name) used to find the record.
  */
-function handleEditSubmit(type, oldName) {
+function handleEditSubmit(type, key) { 
     const newName = document.getElementById('edit-name').value.trim();
-    const employeeId = document.getElementById('edit-employee-id').value.trim();
-    const position = document.getElementById('edit-position').value.trim();
+    const newPosition = document.getElementById('edit-position').value.trim(); 
+    const employeeId = (type === 'employees') ? key : ""; 
+    
+    clearFormErrors('edit-form');
 
     if (!newName) {
-        showToast("Name is required", true);
+        showFormError("edit-name", "Name is required");
         return;
     }
-
-    if (type === 'approver' && !position) {
-        showToast("Position is required", true);
-        return;
-    }
-
+    
     showLoader("Updating entry...");
     closeEditModal();
 
-    // Find the original item to get its status (status is not edited in this form)
-    const listMap = { employee: EMPLOYEES_LIST, engineer: PROJECT_ENGINEERS, approver: APPROVERS_LIST };
+    const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST }; 
     const list = listMap[type];
-    const originalItem = list.find(i => i.name === oldName);
-    const currentStatus = originalItem ? originalItem.status : 'ACTIVE'; // Default to ACTIVE if something goes wrong
+    let originalItem;
+    if (type === 'employees') { 
+        originalItem = list.find(i => i.employeeId === key);
+    } else {
+        originalItem = list.find(i => i.name === key);
+    }
+    const currentStatus = originalItem ? originalItem.status : 'ACTIVE'; 
 
     const data = { 
         name: newName, 
-        status: currentStatus // Preserve the existing status
+        status: currentStatus,
+        position: newPosition, 
+        employeeId: employeeId 
     };
-    if (type === 'employee') data.employeeId = employeeId || "";
-    if (type === 'approver') data.position = position;
-
+    
+    if(type === 'engineers') {
+        data.employeeId = ""; // Ensure engineer doesn't get employeeId
+    }
+    
+    const typeMap = { employees: 'employee', engineers: 'engineer', approvers: 'approver' };
+    
     google.script.run
         .withSuccessHandler(() => {
-            // Update the item in the global list
             if (originalItem) {
                 originalItem.name = newName;
-                if (type === 'employee') originalItem.employeeId = employeeId || "";
-                if (type === 'approver') originalItem.position = position;
+                originalItem.position = newPosition;
             }
 
             populateMasterData();
@@ -804,10 +968,10 @@ function handleEditSubmit(type, oldName) {
             hideLoader();
         })
         .withFailureHandler((error) => {
-            showToast("Failed to update entry: " + error.message, true);
+            showToast("Failed to update entry: "Failure to update entry: " + error.message, true);
             hideLoader();
         })
-        .updateMasterData(type, oldName, data);
+        .updateMasterData(typeMap[type], key, data); 
 }
 </script>
 
