@@ -42,7 +42,7 @@
                 <div id="employees-tab" class="tab-content">
                     <div class="flex justify-between items-center mb-6">
                         <h2 class="text-xl font-bold text-gray-800">Employees List</h2>
-                        <button class="btn-primary inline-flex items-center" onclick="showAddForm('employee')">
+                        <button class="btn-primary inline-flex items-center" onclick="showAddForm('employees')">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                             </svg>
@@ -61,7 +61,7 @@
                             <div id="active-employees" class="space-y-2"></div>
                         </div>
                         <div>
-                            <h3 class="font-semibold text-gray-500 mb-3 flex items-center">
+                            <h3 class="font-semibold text-red-700 mb-3 flex items-center">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
                                 </svg>
@@ -75,7 +75,7 @@
                 <div id="engineers-tab" class="tab-content hidden">
                     <div class="flex justify-between items-center mb-6">
                         <h2 class="text-xl font-bold text-gray-800">Project Engineers List</h2>
-                        <button class="btn-primary inline-flex items-center" onclick="showAddForm('engineer')">
+                        <button class="btn-primary inline-flex items-center" onclick="showAddForm('engineers')">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                             </svg>
@@ -94,7 +94,7 @@
                             <div id="active-engineers" class="space-y-2"></div>
                         </div>
                         <div>
-                            <h3 class="font-semibold text-gray-500 mb-3 flex items-center">
+                            <h3 class="font-semibold text-red-700 mb-3 flex items-center">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
                                 </svg>
@@ -108,7 +108,7 @@
                 <div id="approvers-tab" class="tab-content hidden">
                     <div class="flex justify-between items-center mb-6">
                         <h2 class="text-xl font-bold text-gray-800">Approvers List</h2>
-                        <button class="btn-primary inline-flex items-center" onclick="showAddForm('approver')">
+                        <button class="btn-primary inline-flex items-center" onclick="showAddForm('approvers')">
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                             </svg>
@@ -127,7 +127,7 @@
                             <div id="active-approvers" class="space-y-2"></div>
                         </div>
                         <div>
-                            <h3 class="font-semibold text-gray-500 mb-3 flex items-center">
+                            <h3 class="font-semibold text-red-700 mb-3 flex items-center">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
                                 </svg>
@@ -142,23 +142,27 @@
     </div>
 </div>
 
+<!-- Add Modal -->
 <div id="add-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
         <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-t-2xl">
             <h2 id="add-modal-title" class="text-2xl font-bold text-white"></h2>
         </div>
         <form id="add-form" class="p-6 space-y-4">
-            <div class="input-group">
-                <label for="add-name" class="input-label">Name</label>
-                <input type="text" id="add-name" required class="input-field">
-            </div>
             <div id="add-employee-id-group" class="input-group hidden">
                 <label for="add-employee-id" class="input-label">Employee ID</label>
                 <input type="text" id="add-employee-id" class="input-field" placeholder="e.g., EMP001">
+                <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+            </div>
+            <div class="input-group">
+                <label for="add-name" class="input-label">Name</label>
+                <input type="text" id="add-name" required class="input-field">
+                <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
             </div>
             <div id="add-position-group" class="input-group hidden">
                 <label for="add-position" class="input-label">Position</label>
-                <input type="text" id="add-position" class="input-field">
+                <input type="text" id="add-position" class="input-field" list="position-datalist">
+                <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
             </div>
             <div class="flex justify-end gap-3 pt-4">
                 <button type="button" onclick="closeAddModal()" class="btn-cancel inline-flex items-center">Cancel</button>
@@ -173,17 +177,69 @@
     </div>
 </div>
 
+<!-- Edit Modal -->
+<div id="edit-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-t-2xl">
+            <h2 id="edit-modal-title" class="text-2xl font-bold text-white"></h2>
+        </div>
+        <form id="edit-form" class="p-6 space-y-4">
+            <input type="hidden" id="edit-key">
+            <input type="hidden" id="edit-type">
+            
+            <div id="edit-employee-id-group" class="input-group hidden">
+                <label for="edit-employee-id" class="input-label">Employee ID</label>
+                <input type="text" id="edit-employee-id" class="input-field">
+                <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+            </div>
+            <div class="input-group">
+                <label for="edit-name" class="input-label">Name</label>
+                <input type="text" id="edit-name" required class="input-field">
+                <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+            </div>
+            
+            <div id="edit-position-group" class="input-group hidden">
+                <label for="edit-position" class="input-label">Position</label>
+                <input type="text" id="edit-position" class="input-field" list="position-datalist">
+                <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4">
+                <button type="button" onclick="closeEditModal()" class="btn-cancel inline-flex items-center">Cancel</button>
+                <button type="submit" class="btn-primary inline-flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Datalist for positions -->
+<datalist id="position-datalist"></datalist>
+
+<!-- Template -->
 <template id="master-item-template">
     <div class="master-item">
-        <div class="flex-1">
-            <p class="font-medium text-gray-800 item-name"></p>
-            <p class="text-sm text-gray-500 item-employee-id hidden"></p>
-            <p class="text-sm text-gray-500 item-position hidden"></p>
+        <div class="flex-1 min-w-0">
+            <p class="font-medium text-gray-800 item-name truncate"></p>
+            <p class="text-sm text-gray-500 item-employee-id hidden truncate"></p>
+            <p class="text-sm text-gray-500 item-position hidden truncate"></p>
         </div>
-        <button class="toggle-status-btn">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-            </svg>
-        </button>
+        <div class="flex items-center gap-2 flex-shrink-0">
+            <button class="master-action-btn edit-item-btn edit" title="Edit Item">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                </svg>
+            </button>
+            <!-- MODIFICATION: Replaced button with toggle switch -->
+            <label class="toggle-switch" title="Toggle Status">
+                <input type="checkbox" class="toggle-status-checkbox">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
     </div>
 </template>
+
