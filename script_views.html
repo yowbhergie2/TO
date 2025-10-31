@@ -149,6 +149,52 @@ function populateDashboardAnalytics(data) {
         }
     }
 
+    // MODIFICATION: Populate Recent Activity
+    const recentActivityList = document.getElementById('recent-activity-list');
+    if (recentActivityList) {
+        recentActivityList.innerHTML = '';
+        if (data?.activityLog && data.activityLog.length > 0) {
+            
+            // Helper to format time ago
+            const timeAgo = (date) => {
+                const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+                let interval = seconds / 31536000;
+                if (interval > 1) return Math.floor(interval) + "y ago";
+                interval = seconds / 2592000;
+                if (interval > 1) return Math.floor(interval) + "mo ago";
+                interval = seconds / 86400;
+                if (interval > 1) return Math.floor(interval) + "d ago";
+                interval = seconds / 3600;
+                if (interval > 1) return Math.floor(interval) + "h ago";
+                interval = seconds / 60;
+                if (interval > 1) return Math.floor(interval) + "m ago";
+                return "Just now";
+            };
+
+            data.activityLog.forEach(log => {
+                const userEmail = log.user.split('@')[0]; // Get username part of email
+                recentActivityList.innerHTML += `
+                    <div classli="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                        <div class="w-10 h-10 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0 shadow-sm">
+                            ${userEmail.charAt(0).toUpperCase()}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-800 truncate" title="${log.details}">
+                                <span class="font-bold text-pink-700">${log.action}</span> - ${log.details}
+                            </p>
+                            <p class="text-xs text-gray-500">
+                                by <span class="font-medium">${userEmail}</span> • ${timeAgo(log.timestamp)}
+                            </p>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            recentActivityList.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No activity logged yet</p>';
+        }
+    }
+    // END MODIFICATION
+
     const topDestinationsList = document.getElementById('top-destinations-list');
     if (topDestinationsList) {
         topDestinationsList.innerHTML = '';
@@ -275,6 +321,29 @@ function populateDashboardTable(data) {
 
     data.sort((a, b) => new Date(b.Created_Date) - new Date(a.Created_Date));
 
+    // MODIFICATION: Get start of this week (Monday)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize today
+    
+    // Calculate days to subtract to get to Monday (0=Sun, 1=Mon, ..., 6=Sat)
+    // We want Monday (1) to be the start.
+    const dayOfWeek = today.getDay(); // 0 (Sun) - 6 (Sat)
+    
+    // If today is Sunday (0), subtract 6 days to get last Monday.
+    // If today is Monday (1), subtract 0 days.
+    // If today is Tuesday (2), subtract 1 day.
+    // ...
+    // If today is Saturday (6), subtract 5 days.
+    const daysToSubtract = (dayOfWeek === 0) ? 6 : (dayOfWeek - 1);
+    
+    const startOfThisMonday = new Date(today);
+    startOfThisMonday.setDate(today.getDate() - daysToSubtract);
+    startOfThisMonday.setHours(0, 0, 0, 0); // Normalize to start of Monday
+    
+    // console.log("Today:", today.toString());
+    // console.log("Start of this Monday:", startOfThisMonday.toString());
+    // END MODIFICATION
+
     data.forEach(item => {
         try {
             const clone = template.content.cloneNode(true);
@@ -282,6 +351,8 @@ function populateDashboardTable(data) {
             
             row.dataset.toid = item.TO_ID;
             clone.querySelector('.to-id').textContent = item.TO_ID;
+            // MODIFICATION: Add Date Prepared population
+            clone.querySelector('.date-prepared').textContent = formatDateForDisplay(item.Date_Prepared);
             clone.querySelector('.inclusive-dates').textContent = formatInclusiveDates(item.Inclusive_Start, item.Inclusive_End);
             
             let employeesDisplay = item.Employees;
@@ -290,13 +361,8 @@ function populateDashboardTable(data) {
             }
             clone.querySelector('.employees').textContent = employeesDisplay;
             
-            const statusSpan = clone.querySelector('.status');
-            statusSpan.textContent = item.Status;
-            statusSpan.classList.add(
-                item.Status === 'Completed' ? 'status-completed' :
-                item.Status === 'PDF Error' ? 'status-error' : 'status-pending'
-            );
-
+            // MODIFICATION: Removed Status logic
+            
             const viewBtn = clone.querySelector('.view-btn');
             const editBtn = clone.querySelector('.edit-btn');
             const pdfLink = clone.querySelector('.pdf-link');
@@ -305,6 +371,37 @@ function populateDashboardTable(data) {
             viewBtn.dataset.toid = item.TO_ID;
             editBtn.dataset.toid = item.TO_ID;
             pdfBtn.dataset.toid = item.TO_ID;
+
+            // --- MODIFICATION: Updated lock logic ---
+            const datePrepared = new Date(item.Date_Prepared);
+            datePrepared.setHours(0, 0, 0, 0); // Normalize date prepared
+            
+            // I-lock ang button kung:
+            // 1. Ang petsa ay mas maaga sa Lunes NGAYONG LINGGO
+            // 2. AT HINDI pa ito na-uunlock (wala sa UNLOCKED_TO_IDS)
+            const isLocked = (datePrepared < startOfThisMonday && !UNLOCKED_TO_IDS.includes(item.TO_ID));
+            
+            if (isLocked) {
+                editBtn.dataset.locked = "true";
+                editBtn.classList.remove('action-btn-edit');
+                editBtn.classList.add('action-btn-locked');
+                editBtn.title = "Edit (Locked - Admin Password Required)";
+                editBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                    </svg> Edit`;
+            } else {
+                // Ito ay para sa mga bagong entry O sa mga na-unlock
+                editBtn.dataset.locked = "false";
+                editBtn.title = "Edit Travel Order";
+                
+                // MODIFICATION: Ensure unlocked styles are applied
+                editBtn.classList.remove('action-btn-locked');
+                editBtn.classList.add('action-btn-edit');
+                editBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                    </svg> Edit`;
+            }
+            // --- END MODIFICATION ---
 
             if (item.PDF_Link) {
                 pdfLink.href = item.PDF_Link;
@@ -340,7 +437,17 @@ function setupDashboardListeners() {
             showViewModal(viewBtn.dataset.toid);
         } else if (editBtn) {
             e.preventDefault();
-            loadUpdateView(editBtn.dataset.toid);
+            // MODIFICATION: Check for lock
+            const isLocked = editBtn.dataset.locked === "true";
+            const toId = editBtn.dataset.toid;
+            
+            if (isLocked) {
+                _toIdToEdit = toId; // Store the ID
+                showPasswordModal(); // Show password prompt
+            } else {
+                loadUpdateView(toId); // Unlock, proceed as normal
+            }
+            // END MODIFICATION
         } else if (pdfBtn) {
             e.preventDefault();
             handleGeneratePdf(pdfBtn.dataset.toid);
@@ -520,6 +627,14 @@ function setupMasterDataListeners() {
             handleEditSubmit(type, key); 
         });
     }
+
+    // MODIFICATION: Add search listener
+    const searchInput = document.getElementById('master-data-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            populateMasterData(); // Re-populate all lists with the search filter
+        });
+    }
 }
 
 function populateMasterData() {
@@ -528,12 +643,16 @@ function populateMasterData() {
     console.log("Engineers:", PROJECT_ENGINEERS.length);
     console.log("Approvers:", APPROVERS_LIST.length);
     
-    populateMasterList('employees', EMPLOYEES_LIST);
-    populateMasterList('engineers', PROJECT_ENGINEERS);
-    populateMasterList('approvers', APPROVERS_LIST);
+    // MODIFICATION: Get search term
+    const searchInput = document.getElementById('master-data-search');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+
+    populateMasterList('employees', EMPLOYEES_LIST, searchTerm);
+    populateMasterList('engineers', PROJECT_ENGINEERS, searchTerm);
+    populateMasterList('approvers', APPROVERS_LIST, searchTerm);
 }
 
-function populateMasterList(type, data) {
+function populateMasterList(type, data, searchTerm = '') { // MODIFICATION: Added searchTerm
     const activeContainer = document.getElementById(`active-${type}`);
     const inactiveContainer = document.getElementById(`inactive-${type}`);
     const template = document.getElementById('master-item-template');
@@ -546,8 +665,18 @@ function populateMasterList(type, data) {
     activeContainer.innerHTML = '';
     inactiveContainer.innerHTML = '';
 
-    const activeItems = data.filter(item => item.status.trim().toUpperCase() !== 'INACTIVE');
-    const inactiveItems = data.filter(item => item.status.trim().toUpperCase() === 'INACTIVE');
+    // MODIFICATION: Filter data based on search term
+    const filteredData = data.filter(item => {
+        if (!searchTerm) return true; // No search, return all
+        const name = item.name ? item.name.toLowerCase() : '';
+        const position = item.position ? item.position.toLowerCase() : '';
+        const employeeId = item.employeeId ? item.employeeId.toLowerCase() : '';
+        return name.includes(searchTerm) || position.includes(searchTerm) || employeeId.includes(searchTerm);
+    });
+
+    // MODIFICATION: Use filteredData instead of data
+    const activeItems = filteredData.filter(item => item.status.trim().toUpperCase() !== 'INACTIVE');
+    const inactiveItems = filteredData.filter(item => item.status.trim().toUpperCase() === 'INACTIVE');
 
     activeItems.forEach(item => {
         const clone = template.content.cloneNode(true);
@@ -636,10 +765,10 @@ function populateMasterList(type, data) {
     });
 
     if (activeItems.length === 0) {
-        activeContainer.innerHTML = '<p class="text-gray-400 text-sm italic">No active entries</p>';
+        activeContainer.innerHTML = `<p class="text-gray-400 text-sm italic">No active entries${searchTerm ? ' matching search' : ''}</p>`;
     }
     if (inactiveItems.length === 0) {
-        inactiveContainer.innerHTML = '<p class="text-gray-400 text-sm italic">No inactive entries</p>';
+        inactiveContainer.innerHTML = `<p class="text-gray-400 text-sm italic">No inactive entries${searchTerm ? ' matching search' : ''}</p>`;
     }
 }
 
@@ -968,7 +1097,7 @@ function handleEditSubmit(type, key) {
             hideLoader();
         })
         .withFailureHandler((error) => {
-            showToast("Failed to update entry: "Failure to update entry: " + error.message, true);
+            showToast("Failed to update entry: " + error.message, true);
             hideLoader();
         })
         .updateMasterData(typeMap[type], key, data); 
