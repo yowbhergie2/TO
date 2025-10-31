@@ -211,30 +211,50 @@ window.addEventListener('load', () => {
 function onInitialLoadSuccess(data) {
     console.log("=== INITIAL DATA RECEIVED ===");
     console.log("Data:", data);
-    
+
+    if (!data) {
+        console.error("ERROR: No data received from server!");
+        onInitialLoadFailure({ message: "No data received from server" });
+        return;
+    }
+
     if (data.error) {
-        console.error("Data contains error:", data.error);
+        console.error("ERROR: Data contains error:", data.error);
         onInitialLoadFailure({ message: data.error });
         return;
     }
-    
+
+    // Store data with detailed logging
     LATEST_DATE_PREPARED = data.latestDate ? new Date(data.latestDate) : null;
+    console.log("✓ Latest Date Prepared:", LATEST_DATE_PREPARED);
+
     ALL_TRAVEL_ORDERS = data.travelOrders || [];
+    console.log("✓ Travel Orders:", ALL_TRAVEL_ORDERS.length);
+
     PROJECT_ENGINEERS = data.projectEngineers || [];
+    console.log("✓ Project Engineers:", PROJECT_ENGINEERS.length);
+
     EMPLOYEES_LIST = data.employees || [];
+    console.log("✓ Employees:", EMPLOYEES_LIST.length);
+
     APPROVERS_LIST = data.approvers || [];
+    console.log("✓ Approvers:", APPROVERS_LIST.length);
+
     RECENT_PURPOSES = data.recentPurposes || [];
+    console.log("✓ Recent Purposes:", RECENT_PURPOSES.length);
+
     RECENT_STATIONS = data.recentStations || [];
+    console.log("✓ Recent Stations:", RECENT_STATIONS.length);
+
     EMPLOYEE_POSITIONS = data.employeePositions || [];
-    ENGINEER_POSITIONS = data.engineerPositions || []; // MODIFICATION: Store engineer positions
-    
-    console.log("Travel Orders:", ALL_TRAVEL_ORDERS.length);
-    console.log("Employees:", EMPLOYEES_LIST.length);
-    console.log("Project Engineers:", PROJECT_ENGINEERS.length);
-    console.log("Approvers:", APPROVERS_LIST.length);
-    console.log("Employee Positions:", EMPLOYEE_POSITIONS.length);
-    console.log("Engineer Positions:", ENGINEER_POSITIONS.length); // MODIFICATION
-    
+    console.log("✓ Employee Positions:", EMPLOYEE_POSITIONS.length);
+
+    ENGINEER_POSITIONS = data.engineerPositions || [];
+    console.log("✓ Engineer Positions:", ENGINEER_POSITIONS.length);
+
+    console.log("=== ALL DATA LOADED SUCCESSFULLY ===");
+    console.log("Loading dashboard view...");
+
     loadDashboardView();
 }
 

@@ -241,18 +241,35 @@ function getRecentStations() {
 
 function getInitialData() {
   try {
-    Logger.log("getInitialData called");
-    
+    Logger.log("=== getInitialData called ===");
+
     const data = getAllTravelOrders();
+    Logger.log("✓ Travel orders loaded: " + data.length);
+
     const latestDate = getLatestDatePrepared();
+    Logger.log("✓ Latest date prepared: " + (latestDate ? latestDate.toISOString() : "null"));
+
     const projectEngineers = getProjectEngineers();
+    Logger.log("✓ Project Engineers loaded: " + projectEngineers.length);
+
     const employees = getEmployees();
+    Logger.log("✓ Employees loaded: " + employees.length);
+
     const approvers = getApprovers();
+    Logger.log("✓ Approvers loaded: " + approvers.length);
+
     const recentPurposes = getRecentPurposes();
+    Logger.log("✓ Recent Purposes loaded: " + recentPurposes.length);
+
     const recentStations = getRecentStations();
-    const employeePositions = getEmployeePositions(); // MODIFICATION: Get employee positions
-    const engineerPositions = getEngineerPositions(); // MODIFICATION: Get engineer positions
-    
+    Logger.log("✓ Recent Stations loaded: " + recentStations.length);
+
+    const employeePositions = getEmployeePositions();
+    Logger.log("✓ Employee Positions loaded: " + employeePositions.length);
+
+    const engineerPositions = getEngineerPositions();
+    Logger.log("✓ Engineer Positions loaded: " + engineerPositions.length);
+
     const result = {
       travelOrders: data,
       latestDate: latestDate ? latestDate.toISOString() : null,
@@ -261,18 +278,16 @@ function getInitialData() {
       approvers: approvers,
       recentPurposes: recentPurposes,
       recentStations: recentStations,
-      employeePositions: employeePositions, // MODIFICATION: Add to result
-      engineerPositions: engineerPositions // MODIFICATION: Add to result
+      employeePositions: employeePositions,
+      engineerPositions: engineerPositions
     };
-    
-    Logger.log("getInitialData returning " + data.length + " travel orders");
-    Logger.log("Project Engineers: " + projectEngineers.length);
-    Logger.log("Employees: " + employees.length);
-    Logger.log("Approvers: " + approvers.length);
+
+    Logger.log("=== getInitialData SUCCESS - Returning data ===");
     return result;
   } catch (e) {
-    Logger.log("ERROR in getInitialData: " + e.message);
-    Logger.log(e.stack);
+    Logger.log("=== ERROR in getInitialData ===");
+    Logger.log("ERROR: " + e.message);
+    Logger.log("STACK: " + e.stack);
     return { error: e.message };
   }
 }
