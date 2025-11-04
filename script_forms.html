@@ -44,6 +44,13 @@ function setupNewToFormListeners() {
     populateProjectEngineerDropdown(document.getElementById('requestingOfficer'));
     
     document.getElementById('add-employee-btn').addEventListener('click', () => {
+        // START MODIFICATION: Add limit check in event listener
+        const currentCount = employeesContainer.querySelectorAll('.employee-row').length;
+        if (currentCount >= 10) {
+            showToast("You can only add a maximum of 10 employees.", true);
+            return;
+        }
+        // END MODIFICATION
         createEmployeeRow(employeesContainer, null); // Pass null for new rows
     });
     
@@ -146,6 +153,13 @@ function validateNewToForm() {
         showToast("Please add at least one employee", true);
         isValid = false;
     }
+
+    // START MODIFICATION: Add client-side validation for employee limit
+    if (employees.length > 10) {
+        showToast("You can only add a maximum of 10 employees.", true);
+        isValid = false;
+    }
+    // END MODIFICATION
 
     const requiredFields = [
         { id: 'datePrepared', name: 'Date Prepared' },
@@ -404,6 +418,13 @@ function setupUpdateFormListeners() {
     
     const employeesContainer = document.getElementById('update-employees-container');
     document.getElementById('update-add-employee-btn').addEventListener('click', () => {
+        // START MODIFICATION: Add limit check in event listener
+        const currentCount = employeesContainer.querySelectorAll('.employee-row').length;
+        if (currentCount >= 10) {
+            showToast("You can only add a maximum of 10 employees.", true);
+            return;
+        }
+        // END MODIFICATION
         createEmployeeRow(employeesContainer, null); // Pass null for new rows
     });
     
@@ -442,6 +463,13 @@ function validateUpdateToForm() {
         showToast("Please add at least one employee", true);
         isValid = false;
     }
+
+    // START MODIFICATION: Add client-side validation for employee limit
+    if (employees.length > 10) {
+        showToast("You can only add a maximum of 10 employees.", true);
+        isValid = false;
+    }
+    // END MODIFICATION
 
     const requiredFields = [
         { id: 'update-datePrepared', name: 'Date Prepared', key: 'datePrepared' },
@@ -657,4 +685,3 @@ function resetNewToForm() {
     clearFormErrors('new-to-form');
 }
 </script>
-
