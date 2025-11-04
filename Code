@@ -1,27 +1,27 @@
+// ==================== CONFIGURATION ====================
 const DATABASE_SHEET_ID = "1TlcVa6NAX-2o4qGzfb1jsw3tD-R8L8K5jucwLcD_mGA";
-const PDF_TEMPLATE_DOC_ID = "1NXH4c9kAf7L2ILw0egJZaETEeiah5fvH61JRpuxEW0o";
+const PDF_TEMPLATE_DOC_ID = "1NXH4c9kAf7L2ILw0egJZaETEeiah5fvH61JRpuxEW0o"; // Not used anymore
 const TARGET_PDF_FOLDER_ID = "1PmESdk0hdF0H38eTOOJ-uOlhAOMz6-by";
 
 const DB_SHEET_NAME = "Travel Orders";
+const TO_FORM_SHEET_NAME = "TO FORM"; // ADDED: Sheet template name
 const PROJECT_ENGINEER_MASTER_SHEET = "Project Engineer Master";
 const EMPLOYEES_MASTER_SHEET = "Employees Master";
 const APPROVERS_MASTER_SHEET = "Approvers Master";
-const PW_SHEET_NAME = "PW"; // For password
-const ACTIVITY_LOG_SHEET = "Activity Log"; // MODIFICATION: New Log Sheet
+const PW_SHEET_NAME = "PW";
+const ACTIVITY_LOG_SHEET = "Activity Log";
 const TO_ID_PREFIX = "RO2.2";
 const TO_ID_CONNECTOR = "-JO";
+
+// MODIFIED: Added KM_Radius column
 const HEADERS = [
   "TO_ID", "Date_Prepared", "Inclusive_Start", "Inclusive_End", "Employees", "Destination", 
-  "Station", "Purpose", "Mode_of_Travel", "Requesting_Officer", "Date_Submission_Travel_Report", 
+  "KM_Radius", "Station", "Purpose", "Mode_of_Travel", "Requesting_Officer", "Date_Submission_Travel_Report", 
   "Status", "PDF_Link", "Created_By", "Created_Date", "Last_Modified_By", "Last_Modified_Date"
 ];
-const DATE_COLUMNS = [2, 3, 4, 11, 15, 17];
+const DATE_COLUMNS = [2, 3, 4, 12, 16, 18]; // MODIFIED: Adjusted for new column
 
-/**
- * @description Writes an activity log to the 'Activity Log' sheet.
- * @param {string} action The action performed (e.g., "Create TO", "Update Master Data").
- * @param {string} details Specific details about the action (e.g., "Created TO-2025-00001").
- */
+// ==================== ACTIVITY LOGGING ====================
 function logActivity(action, details) {
   try {
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(ACTIVITY_LOG_SHEET);
@@ -29,7 +29,6 @@ function logActivity(action, details) {
     const timestamp = new Date();
 
     if (!sheet) {
-      // Create sheet if it doesn't exist
       const newSheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).insertSheet(ACTIVITY_LOG_SHEET);
       newSheet.appendRow(["Timestamp", "User", "Action", "Details"]);
       newSheet.setFrozenRows(1);
@@ -38,10 +37,9 @@ function logActivity(action, details) {
     } else {
       sheet.appendRow([timestamp, userEmail, action, details]);
       
-      // Optional: Trim the log to prevent it from getting too large
       const maxRows = 1000;
       if (sheet.getLastRow() > maxRows) {
-        sheet.deleteRows(2, sheet.getLastRow() - maxRows); // Delete oldest rows
+        sheet.deleteRows(2, sheet.getLastRow() - maxRows);
       }
     }
   } catch (e) {
@@ -49,6 +47,27 @@ function logActivity(action, details) {
   }
 }
 
+function getActivityLog() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(ACTIVITY_LOG_SHEET);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    
+    const data = sheet.getDataRange().getValues();
+    data.shift();
+    
+    return data.slice(0, 20).reverse().map(row => ({
+      timestamp: row[0],
+      user: row[1],
+      action: row[2],
+      details: row[3]
+    }));
+  } catch (e) {
+    Logger.log("Error getting activity log: " + e.message);
+    return [];
+  }
+}
+
+// ==================== MENU ====================
 function onOpen(e) {
   SpreadsheetApp.getUi()
     .createMenu('Travel Order System')
@@ -89,249 +108,42 @@ function checkAdminPassword(password) {
     const correctPassword = sheet.getRange("A1").getValue();
     return password === correctPassword;
   }
-  return false; // Fallback if PW sheet doesn't exist
+  return false;
 }
 
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-function getProjectEngineers() {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PROJECT_ENGINEER_MASTER_SHEET);
-    if (!sheet) {
-      Logger.log("Project Engineer Master sheet not found");
-      return [];
-    }
-    const data = sheet.getDataRange().getValues();
-    if (data.length < 2) {
-      Logger.log("No data in Project Engineer Master sheet");
-      return [];
-    }
-    const headers = data[0];
-    const nameIdx = headers.indexOf("Name");
-    const positionIdx = headers.indexOf("Position"); // MODIFICATION: Get position index
-    const statusIdx = headers.indexOf("Status");
-    if (nameIdx === -1) {
-      Logger.log("Name column not found in Project Engineer Master");
-      return [];
-    }
-    const result = data.slice(1)
-      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
-      .map(row => ({
-        name: row[nameIdx].toString().trim().toUpperCase(),
-        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "", // MODIFICATION: Get position value
-        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().toUpperCase() : "ACTIVE"
-      }));
-    Logger.log("Project Engineers loaded: " + result.length);
-    return result;
-  } catch (e) {
-    Logger.log("Error fetching project engineers: " + e);
-    return [];
-  }
+// ==================== UI FUNCTIONS ====================
+function getDashboardView() {
+  return HtmlService.createHtmlOutputFromFile('dashboard').getContent();
 }
 
-function getEmployees() {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(EMPLOYEES_MASTER_SHEET);
-    if (!sheet) {
-      Logger.log("Employees Master sheet not found");
-      return [];
-    }
-    const data = sheet.getDataRange().getValues();
-    if (data.length < 2) {
-      Logger.log("No data in Employees Master sheet");
-      return [];
-    }
-    const headers = data[0];
-    // MODIFICATION: Get column indices based on header names
-    const employeeIdIdx = headers.indexOf("Employee_ID");
-    const nameIdx = headers.indexOf("Name");
-    const positionIdx = headers.indexOf("Position");
-    const statusIdx = headers.indexOf("Status");
-
-    if (employeeIdIdx === -1 || nameIdx === -1) {
-      Logger.log("Required columns (Employee_ID, Name) not found in Employees Master");
-      return [];
-    }
-    const result = data.slice(1)
-      .filter(row => row[employeeIdIdx] && row[employeeIdIdx].toString().trim() !== "")
-      .map(row => ({
-        employeeId: row[employeeIdIdx].toString().trim(), // Keep original case for ID? Assuming uppercase.
-        name: row[nameIdx].toString().trim().toUpperCase(),
-        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "",
-        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().toUpperCase() : "ACTIVE"
-      }));
-    Logger.log("Employees loaded: " + result.length);
-    return result;
-  } catch (e) {
-    Logger.log("Error fetching employees: " + e);
-    return [];
-  }
+function getNewToView() {
+  return HtmlService.createHtmlOutputFromFile('newTo').getContent();
 }
 
-function getApprovers() {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(APPROVERS_MASTER_SHEET);
-    if (!sheet) {
-      Logger.log("Approvers Master sheet not found");
-      return [];
-    }
-    const data = sheet.getDataRange().getValues();
-    if (data.length < 2) {
-      Logger.log("No data in Approvers Master sheet");
-      return [];
-    }
-    const headers = data[0];
-    const nameIdx = headers.indexOf("Name");
-    const positionIdx = headers.indexOf("Position");
-    const statusIdx = headers.indexOf("Status");
-    if (nameIdx === -1) {
-      Logger.log("Name column not found in Approvers Master");
-      return [];
-    }
-    const result = data.slice(1)
-      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
-      .map(row => ({
-        name: row[nameIdx].toString().trim().toUpperCase(),
-        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "",
-        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().toUpperCase() : "ACTIVE"
-      }));
-    Logger.log("Approvers loaded: " + result.length);
-    return result;
-  } catch (e) {
-    Logger.log("Error fetching approvers: " + e);
-    return [];
-  }
+function getUpdateView() {
+  return HtmlService.createHtmlOutputFromFile('update').getContent();
 }
 
-function getEmployeePositions() {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(EMPLOYEES_MASTER_SHEET);
-    if (!sheet) return [];
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const positionIdx = headers.indexOf("Position");
-    if (positionIdx === -1) return [];
-    const positions = data.slice(1)
-      .map(row => row[positionIdx])
-      .filter(p => p && p.toString().trim() !== "")
-      .map(p => p.toString().trim().toUpperCase());
-    return [...new Set(positions)]; // Return unique list
-  } catch (e) {
-    Logger.log("Error fetching employee positions: " + e);
-    return [];
-  }
-}
-
-function getEngineerPositions() {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PROJECT_ENGINEER_MASTER_SHEET);
-    if (!sheet) return [];
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const positionIdx = headers.indexOf("Position");
-    if (positionIdx === -1) return [];
-    const positions = data.slice(1)
-      .map(row => row[positionIdx])
-      .filter(p => p && p.toString().trim() !== "")
-      .map(p => p.toString().trim().toUpperCase());
-    return [...new Set(positions)]; // Return unique list
-  } catch (e) {
-    Logger.log("Error fetching engineer positions: " + e);
-    return [];
-  }
-}
-
-/**
- * @description Fetches the last 15 activity logs.
- * @returns {Array<Object>} An array of log objects.
- */
-function getActivityLog() {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(ACTIVITY_LOG_SHEET);
-    if (!sheet) {
-      return []; // No log sheet yet
-    }
-    
-    const lastRow = sheet.getLastRow();
-    const startRow = Math.max(2, lastRow - 14); // Get last 15 entries (or fewer)
-    const numRows = lastRow - startRow + 1;
-
-    if (numRows <= 0) {
-      return []; // No data other than header
-    }
-
-    const data = sheet.getRange(startRow, 1, numRows, 4).getValues();
-    const headers = ["timestamp", "user", "action", "details"];
-    
-    const logs = data.map(row => {
-      let obj = {};
-      obj.timestamp = new Date(row[0]).toISOString(); // Format timestamp
-      obj.user = row[1];
-      obj.action = row[2];
-      obj.details = row[3];
-      return obj;
-    });
-
-    return logs.reverse(); // Return newest first
-  } catch (e) {
-    Logger.log("Error fetching activity log: " + e);
-    return [];
-  }
-}
-
-function getRecentPurposes() {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const purposeIdx = headers.indexOf("Purpose");
-    if (purposeIdx === -1) return [];
-    const purposes = data.slice(1)
-      .map(row => row[purposeIdx])
-      .filter(p => p && p.toString().trim() !== "")
-      .map(p => p.toString().trim().toUpperCase());
-    return [...new Set(purposes)].slice(-20).reverse();
-  } catch (e) {
-    Logger.log("Error fetching recent purposes: " + e);
-    return [];
-  }
-}
-
-function getRecentStations() {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const stationIdx = headers.indexOf("Station");
-    if (stationIdx === -1) return [];
-    const stations = data.slice(1)
-      .map(row => row[stationIdx])
-      .filter(s => s && s.toString().trim() !== "")
-      .map(s => s.toString().trim().toUpperCase());
-    return [...new Set(stations)].slice(-20).reverse();
-  } catch (e) {
-    Logger.log("Error fetching recent stations: " + e);
-    return [];
-  }
-}
-
+// ==================== DATA RETRIEVAL ====================
 function getInitialData() {
   try {
-    Logger.log("getInitialData called");
-    
     const data = getAllTravelOrders();
-    const latestDate = getLatestDatePrepared();
     const projectEngineers = getProjectEngineers();
     const employees = getEmployees();
     const approvers = getApprovers();
-    const recentPurposes = getRecentPurposes();
-    const recentStations = getRecentStations();
-    const employeePositions = getEmployeePositions(); 
-    const engineerPositions = getEngineerPositions(); 
     
-    // FIX: Replaced [... existing code ...] with actual properties
+    const recentPurposes = [...new Set(data.map(to => to.Purpose).filter(Boolean))].slice(0, 10);
+    const recentStations = [...new Set(data.map(to => to.Station).filter(Boolean))].slice(0, 10);
+    
+    const employeePositions = [...new Set(employees.map(e => e.position).filter(Boolean))];
+    const engineerPositions = [...new Set(projectEngineers.map(e => e.position).filter(Boolean))];
+    
+    const latestDate = getLatestDatePrepared();
+    
     const result = {
       travelOrders: data,
       latestDate: latestDate ? latestDate.toISOString() : null,
@@ -345,9 +157,6 @@ function getInitialData() {
     };
     
     Logger.log("getInitialData returning " + data.length + " travel orders");
-    Logger.log("Project Engineers: " + projectEngineers.length);
-    Logger.log("Employees: " + employees.length);
-    Logger.log("Approvers: " + approvers.length);
     return result;
   } catch (e) {
     Logger.log("ERROR in getInitialData: " + e.message);
@@ -426,6 +235,7 @@ function getTravelOrderById(toId) {
   return obj;
 }
 
+// ==================== CREATE TRAVEL ORDER ====================
 function saveTravelOrder(form) {
   try {
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
@@ -446,6 +256,7 @@ function saveTravelOrder(form) {
     
     const employeesJson = JSON.stringify(form.employees.map(e => e.toUpperCase()));
 
+    // MODIFIED: Added kmRadius to newRow
     const newRow = [
       toId,
       Utilities.formatDate(datePrepared, "Asia/Manila", "yyyy-MM-dd"),
@@ -453,6 +264,7 @@ function saveTravelOrder(form) {
       Utilities.formatDate(end, "Asia/Manila", "yyyy-MM-dd"),
       employeesJson,
       form.destination.toUpperCase(),
+      form.kmRadius || "WITHIN 50 KM RADIUS", // ADDED
       form.station.toUpperCase(),
       form.purpose.toUpperCase(),
       form.modeOfTravel.toUpperCase(),
@@ -472,7 +284,7 @@ function saveTravelOrder(form) {
     const pdfResult = generateAndLinkPdf(toId, newRowNumber);
     const newRecord = getTravelOrderById(toId);
     
-    logActivity("Create TO", `Created Travel Order: ${toId}`); // MODIFICATION: Log activity
+    logActivity("Create TO", `Created Travel Order: ${toId}`);
     
     return { success: true, newRecord: newRecord, pdfUrl: pdfResult.pdfUrl };
 
@@ -482,6 +294,7 @@ function saveTravelOrder(form) {
   }
 }
 
+// ==================== UPDATE TRAVEL ORDER ====================
 function updateTravelOrder(form, toId) {
   try {
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
@@ -508,12 +321,14 @@ function updateTravelOrder(form, toId) {
 
     const employeesJson = JSON.stringify(form.employees.map(e => e.toUpperCase()));
 
+    // MODIFIED: Added kmRadius to updateData
     const updateData = {
       "Date_Prepared": Utilities.formatDate(datePrepared, "Asia/Manila", "yyyy-MM-dd"),
       "Inclusive_Start": Utilities.formatDate(start, "Asia/Manila", "yyyy-MM-dd"),
       "Inclusive_End": Utilities.formatDate(end, "Asia/Manila", "yyyy-MM-dd"),
       "Employees": employeesJson,
       "Destination": form.destination.toUpperCase(),
+      "KM_Radius": form.kmRadius || "WITHIN 50 KM RADIUS", // ADDED
       "Station": form.station.toUpperCase(),
       "Purpose": form.purpose.toUpperCase(),
       "Mode_of_Travel": form.modeOfTravel.toUpperCase(),
@@ -521,8 +336,8 @@ function updateTravelOrder(form, toId) {
       "Date_Submission_Travel_Report": Utilities.formatDate(submission, "Asia/Manila", "yyyy-MM-dd"),
       "Last_Modified_By": Session.getActiveUser().getEmail(),
       "Last_Modified_Date": new Date(),
-      "Status": "Pending PDF", // MODIFICATION: Reset status to Pending PDF
-      "PDF_Link": "" // MODIFICATION: Clear old PDF link
+      "Status": "Pending PDF",
+      "PDF_Link": ""
     };
 
     headers.forEach((header, index) => {
@@ -531,16 +346,11 @@ function updateTravelOrder(form, toId) {
       }
     });
 
-    // MODIFICATION: Do NOT generate PDF here. Just log and return.
-    // const pdfResult = generateAndLinkPdf(toId, rowNumber); 
-    
     const updatedRecord = getTravelOrderById(toId);
     
-    logActivity("Update TO", `Updated Travel Order: ${toId}. PDF will be re-generated.`); // MODIFICATION: Log activity
+    logActivity("Update TO", `Updated Travel Order: ${toId}. PDF will be re-generated.`);
     
-    // MODIFICATION: Return success without pdfUrl.
-    // We will call generateAndLinkPdf separately.
-    return { success: true, updatedRecord: updatedRecord, pdfUrl: null }; // Return null for pdfUrl
+    return { success: true, updatedRecord: updatedRecord, pdfUrl: null };
 
   } catch (e) {
     Logger.log(e);
@@ -548,6 +358,137 @@ function updateTravelOrder(form, toId) {
   }
 }
 
+// ==================== PDF GENERATION (NEW METHOD) ====================
+function generateAndLinkPdf(toId, rowNumber) {
+  try {
+    const ss = SpreadsheetApp.openById(DATABASE_SHEET_ID);
+    const dataSheet = ss.getSheetByName(DB_SHEET_NAME);
+    const toFormSheet = ss.getSheetByName(TO_FORM_SHEET_NAME);
+    
+    if (!toFormSheet) {
+      throw new Error("TO FORM sheet not found in database spreadsheet.");
+    }
+    
+    const dataRange = dataSheet.getDataRange();
+    const allData = dataRange.getValues();
+    const headers = allData.shift();
+    
+    if (!rowNumber) {
+      const idColIndex = headers.indexOf("TO_ID");
+      if (idColIndex === -1) {
+        throw new Error("TO_ID column not found in sheet.");
+      }
+      
+      const rowIndex = allData.findIndex(r => r[idColIndex] === toId);
+      if (rowIndex === -1) {
+        throw new Error(`TO_ID '${toId}' not found in sheet.`);
+      }
+      rowNumber = rowIndex + 2;
+    }
+
+    const rowData = dataSheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+    
+    const data = {};
+    headers.forEach((header, i) => {
+      data[header] = rowData[i];
+    });
+
+    const datePrepared = new Date(data.Date_Prepared);
+    const startDate = new Date(data.Inclusive_Start);
+    const endDate = new Date(data.Inclusive_End);
+    const submissionDate = new Date(data.Date_Submission_Travel_Report);
+    
+    let employeesArray = [];
+    try {
+      employeesArray = JSON.parse(data.Employees);
+    } catch (e) {
+      employeesArray = [data.Employees];
+    }
+    
+    // Clear previous personnel data
+    toFormSheet.getRange('B13:B30').clearContent();
+    toFormSheet.getRange('F13:F30').clearContent();
+    
+    // Populate TO FORM sheet
+    toFormSheet.getRange('C7').setValue(toId); // Control No
+    toFormSheet.getRange('G7').setValue(Utilities.formatDate(datePrepared, "Asia/Manila", "MMMM dd, yyyy")); // Issue Date
+    
+    // ADDED: Combine Destination + KM Radius in C24
+    const destinationWithRadius = `${data.Destination} (${data.KM_Radius})`;
+    toFormSheet.getRange('C24').setValue(destinationWithRadius);
+    
+    toFormSheet.getRange('C26').setValue(data.Station); // Station
+    toFormSheet.getRange('C28').setValue(data.Purpose); // Purpose
+    toFormSheet.getRange('F32').setValue(data.Requesting_Officer); // Requested By
+    toFormSheet.getRange('F33').setValue("N/A"); // Requesting Office (not in database)
+    toFormSheet.getRange('F35').setValue(formatInclusiveDates(startDate, endDate)); // Duration/Dates
+    toFormSheet.getRange('F37').setValue(data.Mode_of_Travel); // Mode of Travel
+    toFormSheet.getRange('D38').setValue(Utilities.formatDate(submissionDate, "Asia/Manila", "MMMM dd, yyyy")); // Submittal Report Date
+    
+    // Get active approver
+    const approver = getActiveApprover();
+    toFormSheet.getRange('B47').setValue(approver.name); // Approver
+    toFormSheet.getRange('B48').setValue(approver.position); // Approver Position
+    
+    // Populate personnel starting at row 13
+    employeesArray.forEach((empName, index) => {
+      const row = 13 + index;
+      toFormSheet.getRange(`B${row}`).setValue(empName);
+      
+      // Find employee position from master data
+      const empData = getEmployeeByName(empName);
+      if (empData) {
+        toFormSheet.getRange(`F${row}`).setValue(empData.position);
+      }
+    });
+    
+    // ADDED: Apply conditional formatting to Row 41 based on KM Radius
+    const row41Range = toFormSheet.getRange('A41:Z41');
+    if (data.KM_Radius === 'BEYOND 50 KM RADIUS') {
+      row41Range.setFontColor('#000000'); // Black text (visible)
+    } else {
+      row41Range.setFontColor('#FFFFFF'); // White text (invisible)
+    }
+    
+    SpreadsheetApp.flush();
+    
+    // Generate PDF from TO FORM sheet
+    const pdfBlob = toFormSheet.getAs('application/pdf');
+    const pdfName = `TO - ${toId} - ${employeesArray[0] || 'Unknown'}.pdf`;
+    pdfBlob.setName(pdfName);
+    
+    // Save PDF to Drive
+    const targetFolder = DriveApp.getFolderById(TARGET_PDF_FOLDER_ID);
+    const pdfFile = targetFolder.createFile(pdfBlob);
+    const pdfUrl = pdfFile.getUrl();
+    
+    // Update sheet with PDF link and status
+    const pdfLinkCol = headers.indexOf("PDF_Link") + 1;
+    const statusCol = headers.indexOf("Status") + 1;
+    
+    dataSheet.getRange(rowNumber, pdfLinkCol).setValue(pdfUrl);
+    dataSheet.getRange(rowNumber, statusCol).setValue("Completed");
+    
+    logActivity("Generate PDF", `Generated PDF for: ${toId}`);
+    
+    return { success: true, pdfUrl: pdfUrl };
+
+  } catch (e) {
+    Logger.log(e);
+    try {
+      if (rowNumber) {
+        const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
+        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const statusCol = headers.indexOf("Status") + 1;
+        sheet.getRange(rowNumber, statusCol).setValue("PDF Error");
+      }
+    } catch (err) {}
+
+    return { success: false, error: e.message };
+  }
+}
+
+// ==================== HELPER FUNCTIONS ====================
 function getLatestDatePrepared() {
   const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
   const range = sheet.getRange("B2:B");
@@ -619,101 +560,176 @@ function formatInclusiveDates(startDate, endDate) {
   return `${startDate.toLocaleDateString('en-US', { month: 'long' })} ${startDay}–${endDay}, ${startYear}`;
 }
 
-function generateAndLinkPdf(toId, rowNumber) {
+// ==================== MASTER DATA FUNCTIONS ====================
+function getProjectEngineers() {
   try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
-    const dataRange = sheet.getDataRange();
-    const allData = dataRange.getValues();
-    const headers = allData.shift();
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(PROJECT_ENGINEER_MASTER_SHEET);
+    if (!sheet) {
+      Logger.log("Project Engineer Master sheet not found");
+      return [];
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      Logger.log("No data in Project Engineer Master sheet");
+      return [];
+    }
+    const headers = data[0];
+    const nameIdx = headers.indexOf("Name");
+    const positionIdx = headers.indexOf("Position");
+    const statusIdx = headers.indexOf("Status");
+    if (nameIdx === -1) {
+      Logger.log("Name column not found in Project Engineer Master");
+      return [];
+    }
+    const result = data.slice(1)
+      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
+      .map(row => ({
+        name: row[nameIdx].toString().trim().toUpperCase(),
+        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "",
+        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().trim().toUpperCase() : "ACTIVE"
+      }))
+      .filter(item => item.status === "ACTIVE");
     
-    if (!rowNumber) {
-      const idColIndex = headers.indexOf("TO_ID");
-      if (idColIndex === -1) {
-        throw new Error("TO_ID column not found in sheet.");
-      }
+    Logger.log("getProjectEngineers returning " + result.length + " engineers");
+    return result;
+  } catch (e) {
+    Logger.log("ERROR in getProjectEngineers: " + e.message);
+    return [];
+  }
+}
+
+function getEmployees() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(EMPLOYEES_MASTER_SHEET);
+    if (!sheet) {
+      Logger.log("Employees Master sheet not found");
+      return [];
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      Logger.log("No data in Employees Master sheet");
+      return [];
+    }
+    const headers = data[0];
+    const empIdIdx = headers.indexOf("Employee_ID");
+    const nameIdx = headers.indexOf("Name");
+    const positionIdx = headers.indexOf("Position");
+    const statusIdx = headers.indexOf("Status");
+    
+    if (nameIdx === -1) {
+      Logger.log("Name column not found in Employees Master");
+      return [];
+    }
+    
+    const result = data.slice(1)
+      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
+      .map(row => ({
+        employeeId: empIdIdx !== -1 ? row[empIdIdx].toString().trim() : "",
+        name: row[nameIdx].toString().trim().toUpperCase(),
+        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "",
+        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().trim().toUpperCase() : "ACTIVE"
+      }))
+      .filter(item => item.status === "ACTIVE");
+    
+    Logger.log("getEmployees returning " + result.length + " employees");
+    return result;
+  } catch (e) {
+    Logger.log("ERROR in getEmployees: " + e.message);
+    return [];
+  }
+}
+
+function getEmployeeByName(name) {
+  const employees = getEmployees();
+  return employees.find(emp => emp.name.toUpperCase() === name.toUpperCase());
+}
+
+function getApprovers() {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(APPROVERS_MASTER_SHEET);
+    if (!sheet) {
+      Logger.log("Approvers Master sheet not found");
+      return [];
+    }
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) {
+      Logger.log("No data in Approvers Master sheet");
+      return [];
+    }
+    const headers = data[0];
+    const nameIdx = headers.indexOf("Name");
+    const positionIdx = headers.indexOf("Position");
+    const statusIdx = headers.indexOf("Status");
+    
+    if (nameIdx === -1) {
+      Logger.log("Name column not found in Approvers Master");
+      return [];
+    }
+    
+    const result = data.slice(1)
+      .filter(row => row[nameIdx] && row[nameIdx].toString().trim() !== "")
+      .map(row => ({
+        name: row[nameIdx].toString().trim().toUpperCase(),
+        position: positionIdx !== -1 && row[positionIdx] ? row[positionIdx].toString().trim().toUpperCase() : "",
+        status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx].toString().trim().toUpperCase() : "INACTIVE"
+      }));
+    
+    Logger.log("getApprovers returning " + result.length + " approvers");
+    return result;
+  } catch (e) {
+    Logger.log("ERROR in getApprovers: " + e.message);
+    return [];
+  }
+}
+
+function getActiveApprover() {
+  const approvers = getApprovers();
+  const active = approvers.find(a => a.status === "ACTIVE");
+  return active || { name: "N/A", position: "N/A" };
+}
+
+function setActiveApprover(name, position) {
+  try {
+    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(APPROVERS_MASTER_SHEET);
+    if (!sheet) {
+      throw new Error("Approvers Master sheet not found");
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const nameIdx = headers.indexOf("Name");
+    const statusIdx = headers.indexOf("Status");
+    const positionIdx = headers.indexOf("Position");
+    
+    if (nameIdx === -1 || statusIdx === -1 || positionIdx === -1) {
+      throw new Error("Required columns (Name, Status, Position) not found in Approvers sheet");
+    }
+
+    let newActiveRow = -1;
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const rowName = row[nameIdx];
+      const rowStatus = row[statusIdx];
       
-      const rowIndex = allData.findIndex(r => r[idColIndex] === toId);
-      if (rowIndex === -1) {
-        throw new Error(`TO_ID '${toId}' not found in sheet.`);
+      if (rowName === name) {
+        newActiveRow = i + 1;
+        sheet.getRange(newActiveRow, statusIdx + 1).setValue("ACTIVE");
+        sheet.getRange(newActiveRow, positionIdx + 1).setValue(position.toUpperCase());
+      } else if (rowStatus === "ACTIVE") {
+        sheet.getRange(i + 1, statusIdx + 1).setValue("INACTIVE");
       }
-      rowNumber = rowIndex + 2;
     }
 
-    const rowData = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
-    
-    const data = {};
-    headers.forEach((header, i) => {
-      data[header] = rowData[i];
-    });
-
-    const datePrepared = new Date(data.Date_Prepared);
-    const startDate = new Date(data.Inclusive_Start);
-    const endDate = new Date(data.Inclusive_End);
-    const submissionDate = new Date(data.Date_Submission_Travel_Report);
-    
-    let employeesArray = [];
-    try {
-      employeesArray = JSON.parse(data.Employees);
-    } catch (e) {
-      employeesArray = [data.Employees];
-    }
-    const employeesStr = employeesArray.join(", ");
-    
-    const pdfData = {
-      "{{TO_ID}}": toId,
-      "{{DATE_PREPARED}}": datePrepared.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      "{{INCLUSIVE_DATES}}": formatInclusiveDates(startDate, endDate),
-      "{{EMPLOYEES}}": employeesStr,
-      "{{DESTINATION}}": data.Destination,
-      "{{STATION}}": data.Station,
-      "{{PURPOSE}}": data.Purpose,
-      "{{MODE_OF_TRAVEL}}": data.Mode_of_Travel,
-      "{{REQUESTING_OFFICER}}": data.Requesting_Officer,
-      "{{DATE_SUBMISSION_REPORT}}": submissionDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-    };
-
-    const templateFile = DriveApp.getFileById(PDF_TEMPLATE_DOC_ID);
-    const targetFolder = DriveApp.getFolderById(TARGET_PDF_FOLDER_ID);
-    
-    const newDocName = `TO - ${toId} - ${employeesArray[0] || 'Unknown'}`;
-    const newDocFile = templateFile.makeCopy(newDocName, targetFolder);
-    const newDoc = DocumentApp.openById(newDocFile.getId());
-    const body = newDoc.getBody();
-    
-    for (const [placeholder, value] of Object.entries(pdfData)) {
-      body.replaceText(placeholder, value || 'N/A');
+    if (newActiveRow === -1) {
+      throw new Error(`Approver with name '${name}' not found to set as active.`);
     }
     
-    newDoc.saveAndClose();
-    
-    const pdfBlob = newDocFile.getBlob().getAs('application/pdf');
-    const pdfFile = targetFolder.createFile(pdfBlob).setName(newDocName + ".pdf");
-    
-    DriveApp.getFileById(newDocFile.getId()).setTrashed(true);
-    
-    const pdfUrl = pdfFile.getUrl();
-    
-    const pdfLinkCol = headers.indexOf("PDF_Link") + 1;
-    const statusCol = headers.indexOf("Status") + 1;
-    
-    sheet.getRange(rowNumber, pdfLinkCol).setValue(pdfUrl);
-    sheet.getRange(rowNumber, statusCol).setValue("Completed");
-    
-    logActivity("Generate PDF", `Generated PDF for: ${toId}`); // MODIFICATION: Log activity
-    
-    return { success: true, pdfUrl: pdfUrl };
+    logActivity("Master Data Update", `Set active approver: ${name}`);
 
+    return { success: true };
   } catch (e) {
     Logger.log(e);
-    try {
-      if (rowNumber) {
-        const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(DB_SHEET_NAME);
-        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-        const statusCol = headers.indexOf("Status") + 1;
-        sheet.getRange(rowNumber, statusCol).setValue("PDF Error");
-      }
-    } catch (err) {}
-
     return { success: false, error: e.message };
   }
 }
@@ -730,26 +746,29 @@ function saveMasterData(type, data) {
       newRow = [data.employeeId, data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"];
     } else if (type === 'engineer') {
       sheetName = PROJECT_ENGINEER_MASTER_SHEET;
-      headers = ["Name", "Position", "Status"]; // MODIFICATION: Added Position
-      newRow = [data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"]; // MODIFICATION: Added Position
+      headers = ["Name", "Position", "Status"];
+      newRow = [data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"];
     } else if (type === 'approver') {
       sheetName = APPROVERS_MASTER_SHEET;
       headers = ["Name", "Position", "Status"];
-      newRow = [data.name.toUpperCase(), data.position.toUpperCase(), data.status || "ACTIVE"];
+      newRow = [data.name.toUpperCase(), data.position.toUpperCase(), data.status || "INACTIVE"];
     } else {
       throw new Error("Invalid master data type");
     }
 
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(sheetName);
-    if (!sheet) throw new Error(`Sheet ${sheetName} not found`);
+    if (!sheet) {
+      throw new Error(`${sheetName} sheet not found`);
+    }
 
-    if (sheet.getLastRow() === 0) {
+    if (sheet.getRange("A1").getValue() === "") {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");
+      sheet.setFrozenRows(1);
     }
 
     sheet.appendRow(newRow);
     
-    logActivity("Master Data Add", `Added new ${type}: ${data.name}`); // MODIFICATION: Log activity
+    logActivity("Master Data Add", `Added ${type}: ${data.name}`);
 
     return { success: true };
   } catch (e) {
@@ -758,103 +777,40 @@ function saveMasterData(type, data) {
   }
 }
 
-function updateMasterData(type, key, newData) {
+function updateMasterData(type, rowNum, data) {
   try {
     let sheetName;
-    let keyColumnName;
-
-    if (type === 'employee') {
-      sheetName = EMPLOYEES_MASTER_SHEET;
-      keyColumnName = "Employee_ID";
-    } else if (type === 'engineer') {
-      sheetName = PROJECT_ENGINEER_MASTER_SHEET;
-      keyColumnName = "Name";
-    } else if (type === 'approver') {
-      sheetName = APPROVERS_MASTER_SHEET;
-      keyColumnName = "Name";
-    } else {
-      throw new Error("Invalid master data type");
-    }
+    if (type === 'employee') sheetName = EMPLOYEES_MASTER_SHEET;
+    else if (type === 'engineer') sheetName = PROJECT_ENGINEER_MASTER_SHEET;
+    else if (type === 'approver') sheetName = APPROVERS_MASTER_SHEET;
+    else throw new Error("Invalid master data type");
 
     const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(sheetName);
-    if (!sheet) throw new Error(`Sheet ${sheetName} not found`);
+    if (!sheet) throw new Error(`${sheetName} sheet not found`);
 
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const keyIdx = headers.indexOf(keyColumnName);
-
-    if (keyIdx === -1) throw new Error(`Key column ${keyColumnName} not found`);
-
-    const rowIndex = data.slice(1).findIndex(r => r[keyIdx] === key);
-    if (rowIndex === -1) throw new Error("Entry not found");
-
-    const rowNumber = rowIndex + 2;
-
-    // MODIFICATION: Update all relevant fields based on headers
-    headers.forEach((header, index) => {
-      if (header === "Name" && newData.name) {
-        sheet.getRange(rowNumber, index + 1).setValue(newData.name.toUpperCase());
-      } else if (header === "Position" && newData.position) {
-        sheet.getRange(rowNumber, index + 1).setValue(newData.position.toUpperCase());
-      } else if (header === "Status" && newData.status) {
-        sheet.getRange(rowNumber, index + 1).setValue(newData.status);
-      } else if (header === "Employee_ID" && newData.employeeId) {
-        // This shouldn't be updated, but included for completeness
-        sheet.getRange(rowNumber, index + 1).setValue(newData.employeeId);
-      }
-    });
-    
-    logActivity("Master Data Update", `Updated ${type}: ${key}`); // MODIFICATION: Log activity
-
-    return { success: true };
-  } catch (e) {
-    Logger.log(e);
-    return { success: false, error: e.message };
-  }
-}
-
-function setExclusiveActiveApprover(name, activeApproverData) {
-  try {
-    const sheet = SpreadsheetApp.openById(DATABASE_SHEET_ID).getSheetByName(APPROVERS_MASTER_SHEET);
-    if (!sheet) throw new Error(`Sheet ${APPROVERS_MASTER_SHEET} not found`);
-
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     const nameIdx = headers.indexOf("Name");
-    const statusIdx = headers.indexOf("Status");
     const positionIdx = headers.indexOf("Position");
+    const statusIdx = headers.indexOf("Status");
 
-    if (nameIdx === -1 || statusIdx === -1 || positionIdx === -1) {
-      throw new Error("Required columns (Name, Status, Position) not found in Approvers sheet");
+    if (nameIdx !== -1 && data.name) {
+      sheet.getRange(rowNum, nameIdx + 1).setValue(data.name.toUpperCase());
+    }
+    if (positionIdx !== -1 && data.position) {
+      sheet.getRange(rowNum, positionIdx + 1).setValue(data.position.toUpperCase());
+    }
+    if (statusIdx !== -1 && data.status) {
+      sheet.getRange(rowNum, statusIdx + 1).setValue(data.status.toUpperCase());
     }
 
-    let newActiveRow = -1;
-
-    // Loop through all data rows (skip header)
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      const rowName = row[nameIdx];
-      const rowStatus = row[statusIdx];
-      
-      if (rowName === name) {
-        // This is the one we want to set as ACTIVE
-        newActiveRow = i + 1; // 1-based index + 1 for header
-        
-        // Update its data in the sheet
-        sheet.getRange(newActiveRow, statusIdx + 1).setValue("ACTIVE");
-        sheet.getRange(newActiveRow, positionIdx + 1).setValue(activeApproverData.position.toUpperCase());
-        
-      } else if (rowStatus === "ACTIVE") {
-        // This is an old active row, set to INACTIVE
-        sheet.getRange(i + 1, statusIdx + 1).setValue("INACTIVE");
+    if (type === 'employee') {
+      const empIdIdx = headers.indexOf("Employee_ID");
+      if (empIdIdx !== -1 && data.employeeId) {
+        sheet.getRange(rowNum, empIdIdx + 1).setValue(data.employeeId);
       }
     }
 
-    if (newActiveRow === -1) {
-      throw new Error(`Approver with name '${name}' not found to set as active.`);
-    }
-    
-    logActivity("Master Data Update", `Set active approver: ${name}`); // MODIFICATION: Log activity
+    logActivity("Master Data Update", `Updated ${type} at row ${rowNum}`);
 
     return { success: true };
   } catch (e) {
@@ -863,7 +819,7 @@ function setExclusiveActiveApprover(name, activeApproverData) {
   }
 }
 
-
+// ==================== DASHBOARD ANALYTICS ====================
 function getDashboardAnalytics() {
   try {
     const allOrders = getAllTravelOrders();
@@ -913,8 +869,15 @@ function getDashboardAnalytics() {
       count
     }));
 
-    // MODIFICATION: Get Activity Log instead of Top Destinations
-    const activityLog = getActivityLog();
+    // FIXED: Wrap getActivityLog in try-catch
+    let activityLog = [];
+    try {
+      activityLog = getActivityLog();
+    } catch (e) {
+      Logger.log("Activity Log error (non-fatal): " + e.message);
+      // Return empty array if Activity Log sheet doesn't exist yet
+      activityLog = [];
+    }
 
     const modeStats = {};
     allOrders.forEach(order => {
@@ -947,44 +910,34 @@ function getDashboardAnalytics() {
       })
       .slice(0, 5);
 
-    // FIX: Replaced [... existing code ...] with actual properties
     return {
-      summary: {
-        total: totalOrders,
-        completed: completedOrders,
-        pending: pendingOrders,
-        error: errorOrders
-      },
-      employeeStats: topEmployees,
-      monthlyStats: monthlyData,
-      activityLog: activityLog, 
-      travelModes: travelModes,
-      purposeStats: topPurposes,
-      recentOrders: recentOrders
+      totalOrders,
+      completedOrders,
+      pendingOrders,
+      errorOrders,
+      topEmployees,
+      monthlyData,
+      activityLog,
+      travelModes,
+      topPurposes,
+      recentOrders
     };
   } catch (e) {
-    Logger.log("Error in getDashboardAnalytics: " + e);
-    return { error: e.message };
+    Logger.log("ERROR in getDashboardAnalytics: " + e.message);
+    Logger.log("Stack trace: " + e.stack); // ADDED: More detailed logging
+    
+    // Return safe defaults if something fails
+    return {
+      totalOrders: 0,
+      completedOrders: 0,
+      pendingOrders: 0,
+      errorOrders: 0,
+      topEmployees: [],
+      monthlyData: [],
+      activityLog: [],
+      travelModes: [],
+      topPurposes: [],
+      recentOrders: []
+    };
   }
 }
-
-function getDashboardView() {
-  return HtmlService.createHtmlOutputFromFile('dashboard').getContent();
-}
-
-function getTravelOrdersView() {
-  return HtmlService.createHtmlOutputFromFile('travelOrders').getContent();
-}
-
-function getNewToView() {
-  return HtmlService.createHtmlOutputFromFile('newTo').getContent();
-}
-
-function getUpdateView() {
-  return HtmlService.createHtmlOutputFromFile('update').getContent();
-}
-
-function getMasterDataView() {
-  return HtmlService.createHtmlOutputFromFile('masterData').getContent();
-}
-
