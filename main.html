@@ -88,11 +88,31 @@
             <form id="admin-password-form">
                 <div class="p-6 space-y-4">
                     <p id="admin-modal-message" class="text-gray-700">This item is locked. Please enter the admin password to proceed.</p>
+                    
+                    <!-- MODIFICATION: Added "see password" icon -->
                     <div class="input-group">
                         <label for="admin-password-input" class="input-label">Password</label>
-                        <input type="password" id="admin-password-input" required class="input-field">
+                        <!-- Wrapper for input and icon -->
+                        <div class="relative">
+                            <input type="password" id="admin-password-input" required class="input-field w-full pr-10"> <!-- Added w-full and pr-10 -->
+                            
+                            <!-- Eye Icon Button -->
+                            <button type="button" id="toggle-password-visibility" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700">
+                                <!-- Eye Icon (default) -->
+                                <svg id="eye-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <!-- Eye Slash Icon (hidden by default) -->
+                                <svg id="eye-slash-icon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7 1.274-4.057 5.064-7 9.542-7 .918 0 1.81.102 2.67.29m-4.94 4.94l3.21 3.21m-3.21-3.21l-3.21-3.21M15 12a3 3 0 11-6 0 3 3 0 016 0zM3.96 3.96l16.08 16.08" />
+                                </svg>
+                            </button>
+                        </div>
                         <p id="admin-password-error" class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
                     </div>
+                    <!-- END MODIFICATION -->
+
                 </div>
                 <div class="px-6 py-4 bg-gray-50 rounded-b-2xl flex justify-end gap-3">
                     <button type="button" id="admin-password-cancel-btn" class="btn-cancel">Cancel</button>
