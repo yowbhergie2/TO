@@ -265,6 +265,7 @@ function onSaveSuccess(result) {
 
 function onSaveFailure(error) {
     console.error("Save Error:", error);
+    // FIX: Removed extra quote
     showToast("Save Failed: " + error.message, true);
     document.getElementById('save-to-btn').disabled = false;
     hideLoader();
@@ -553,8 +554,11 @@ function onUpdateSuccess(result, toId) { // Receive toId
         // Step 2: Now generate the PDF
         showLoader("Re-generating PDF...");
         google.script.run
-            .withSuccessHandler(onPdfGenerateSuccess) // New handler for PDF
-            .withFailureHandler(onUpdateFailure) // Can reuse update failure
+            // MODIFICATION: Pass an anonymous function to capture 'toId'
+            .withSuccessHandler(pdfResult => {
+                onPdfGenerateSuccess(pdfResult, toId); // Pass both results and toId
+            })
+            .withFailureHandler(onUpdateFailure)
             .generateAndLinkPdf(toId, null); // Call PDF generation
 
     } else {
@@ -563,11 +567,13 @@ function onUpdateSuccess(result, toId) { // Receive toId
 }
 
 // MODIFICATION: New function to handle the success of PDF generation *after* update
-function onPdfGenerateSuccess(pdfResult) {
+// MODIFICATION: Added 'toId' as a parameter
+function onPdfGenerateSuccess(pdfResult, toId) {
     if (pdfResult.success) {
         // PDF generation is complete, now find the fully updated record
         // We need to refresh the local data
-        const updatedRecord = ALL_TRAVEL_ORDERS.find(to => to.TO_ID === pdfResult.toId);
+        // MODIFICATION: Use 'toId' parameter instead of 'pdfResult.toId'
+        const updatedRecord = ALL_TRAVEL_ORDERS.find(to => to.TO_ID === toId);
         if (updatedRecord) {
              updatedRecord.PDF_Link = pdfResult.pdfUrl;
              updatedRecord.Status = "Completed";
@@ -577,7 +583,7 @@ function onPdfGenerateSuccess(pdfResult) {
         showSuccessModal(
             "Update Successful!",
             "Travel Order has been updated and PDF re-generated.",
-            pdfResult.toId, // Use toId from pdfResult
+            toId, // MODIFICATION: Use 'toId' parameter
             pdfResult.pdfUrl
         );
         
@@ -651,3 +657,4 @@ function resetNewToForm() {
     clearFormErrors('new-to-form');
 }
 </script>
+
