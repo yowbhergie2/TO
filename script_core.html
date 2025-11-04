@@ -410,9 +410,17 @@ function updateAllEmployeeDropdowns(containerId) {
  * @description Creates a new employee row with a dropdown.
  * @param {HTMLElement} container The container element to append the row to.
  * @param {string | null} [valueToInclude=null] The name of the employee to pre-select.
- * @returns {HTMLElement} The newly created row element.
+ * @returns {HTMLElement | null} The newly created row element, or null if limit reached.
  */
 function createEmployeeRow(container, valueToInclude = null) {
+    // START MODIFICATION: Add limit check
+    const currentRowCount = container.querySelectorAll('.employee-row').length;
+    if (currentRowCount >= 10) {
+        // showToast is called by the event listener, no need to call it here.
+        return null; // Do not create a new row
+    }
+    // END MODIFICATION
+
     const row = document.createElement('div');
     row.className = 'employee-row flex gap-2';
     
@@ -454,6 +462,20 @@ function createEmployeeRow(container, valueToInclude = null) {
     }
     
     updateEmployeeRemoveButtons(container);
+
+    // START MODIFICATION: Disable add button if limit is reached
+    const addButtonId = (container.id === 'employees-container') ? 'add-employee-btn' : 'update-add-employee-btn';
+    const addButton = document.getElementById(addButtonId);
+    if (addButton) {
+        if (container.querySelectorAll('.employee-row').length >= 10) {
+            addButton.disabled = true;
+            addButton.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            addButton.disabled = false;
+            addButton.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    }
+    // END MODIFICATION
     
     return row;
 }
@@ -464,6 +486,21 @@ function updateEmployeeRemoveButtons(container) {
         const removeBtn = row.querySelector('.remove-employee-btn');
         removeBtn.classList.toggle('hidden', rows.length === 1);
     });
+
+    // START MODIFICATION: Re-enable add button if count is below limit
+    const addButtonId = (container.id === 'employees-container') ? 'add-employee-btn' : 'update-add-employee-btn';
+    const addButton = document.getElementById(addButtonId);
+    if (addButton) {
+        if (rows.length < 10) {
+            addButton.disabled = false;
+            addButton.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            // Ito ay para siguraduhin na kung 10 na, naka-disable pa rin
+            addButton.disabled = true;
+            addButton.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    }
+    // END MODIFICATION
 }
 
 function setupSuggestions(inputId, suggestionsId, dataArray) {
@@ -772,5 +809,3 @@ function handleSubmitPassword() {
 }
 // END MODIFICATION
 </script>
-
-
