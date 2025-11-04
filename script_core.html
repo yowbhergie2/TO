@@ -16,8 +16,8 @@ let _toIdToEdit = null;
 // Array para sa mga TO_IDs na na-unlock sa session na ito
 let UNLOCKED_TO_IDS = []; 
 // Sinusubaybayan kung lagpas 5 PM na
-let isAfter5PM = (new Date().getHours() >= 17); 
-let relockTimer = null; // Timer para sa auto-lock
+// let isAfter5PM = (new Date().getHours() >= 17); // TINANGGAL ANG 5PM CHECK
+// let relockTimer = null; // TINANGGAL ANG 5PM CHECK
 // --- END MODIFICATION ---
 
 const getTodayDate = () => {
@@ -113,6 +113,10 @@ const showFormError = (inputId, message) => {
     
     // Find the next sibling that is a 'form-error-msg'
     let errorMsg = input.nextElementSibling;
+    // MODIFICATION: Check parent's next sibling if input is in a wrapper
+    if (!errorMsg && input.parentElement.classList.contains('relative')) {
+        errorMsg = input.parentElement.nextElementSibling;
+    }
     while(errorMsg && !errorMsg.classList.contains('form-error-msg')) {
         errorMsg = errorMsg.nextElementSibling;
     }
@@ -228,11 +232,34 @@ window.addEventListener('load', () => {
         });
     }
     
+    // --- BAGONG DAGDAG: Listener para sa "mata" icon ---
+    const toggleBtn = document.getElementById('toggle-password-visibility');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            const passwordInput = document.getElementById('admin-password-input');
+            const eyeIcon = document.getElementById('eye-icon');
+            const eyeSlashIcon = document.getElementById('eye-slash-icon');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.classList.add('hidden');
+                eyeSlashIcon.classList.remove('hidden');
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.classList.remove('hidden');
+                eyeSlashIcon.classList.add('hidden');
+            }
+        });
+    }
+    // --- KATAPUSAN NG BAGONG DAGDAG ---
+    
     // --- MODIFICATION FOR LOCKING ---
     // Simulan ang timer na nagche-check kada minuto para sa 5 PM auto-lock
+    /* TINANGGAL ANG 5PM CHECK
     if (!relockTimer) {
         relockTimer = setInterval(checkAutoRelock, 60000); // Check every minute
     }
+    */
     // --- END MODIFICATION ---
     
     google.script.run
@@ -561,6 +588,7 @@ function onPdfFailure(error) {
  * Kung oo, ila-lock ulit nito ang lahat ng entries.
  */
 function checkAutoRelock() {
+    /* TINANGGAL ANG 5PM CHECK
     const now = new Date();
     const currentIsAfter5PM = (now.getHours() >= 17); // 5 PM or later (17:00)
 
@@ -583,6 +611,7 @@ function checkAutoRelock() {
         console.log("Resetting 5 PM lock state for new day.");
         isAfter5PM = false;
     }
+    */
 }
 // --- END MODIFICATION ---
 
@@ -645,7 +674,13 @@ function showPasswordModal() {
     const modal = document.getElementById('admin-password-modal');
     if (modal) {
         // MODIFIED ID
-        document.getElementById('admin-password-input').value = '';
+        const passwordInput = document.getElementById('admin-password-input');
+        passwordInput.value = '';
+        // I-reset ang view ng password
+        passwordInput.type = 'password';
+        document.getElementById('eye-icon').classList.remove('hidden');
+        document.getElementById('eye-slash-icon').classList.add('hidden');
+        
         // MODIFIED ID
         document.getElementById('admin-password-error').classList.add('hidden');
         modal.classList.remove('hidden');
@@ -676,14 +711,25 @@ function handleSubmitPassword() {
         return;
     }
     
-    // --- MODIFICATION FOR LOCKING ---
+    // --- MODIFICATION FOR LOCKING (IBINALIK) ---
     // Suriin kung lagpas 5 PM na bago pa man mag-check ng password
+    /* TINANGGAL AYON SA REQUEST
     if (isAfter5PM) {
         errorMsg.textContent = "Unlocking is disabled after 5:00 PM.";
         errorMsg.classList.remove('hidden');
         hideLoader();
         return; // Hihinto dito
     }
+    */
+    // IBINALIK ANG CHECK:
+    /* TINANGGAL ANG 5PM CHECK
+    if (isAfter5PM) {
+        errorMsg.textContent = "Unlocking is disabled after 5:00 PM.";
+        errorMsg.classList.remove('hidden');
+        hideLoader();
+        return; // Hihinto dito
+    }
+    */
     // --- END MODIFICATION ---
     
     showLoader("Verifying...");
@@ -700,6 +746,9 @@ function handleSubmitPassword() {
                     UNLOCKED_TO_IDS.push(_toIdToEdit);
                 }
                 
+                // BAGONG DAGDAG: Ipakita ang success toast na may babala
+                showToast("Entry unlocked!", false); // Tinanggal ang babala
+
                 closePasswordModal(); // 2. Isara ang modal
                 
                 // 3. I-refresh ang table para ipakita ang na-unlock na button
@@ -723,4 +772,5 @@ function handleSubmitPassword() {
 }
 // END MODIFICATION
 </script>
+
 
