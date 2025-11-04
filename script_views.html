@@ -11,10 +11,16 @@ function loadDashboardView() {
             document.getElementById('content-area').innerHTML = html;
             
             // 2. Now, get the data from the server-side function
-            google.script.run
-                .withSuccessHandler(onAnalyticsSuccess)
-                .withFailureHandler(onAnalyticsFailure)
-                .getDashboardAnalytics(); // Call the server-side function
+            // --- MODIFICATION: Added a 1-second delay ---
+            // This is to prevent a potential race condition with getInitialData()
+            // which might be causing the server to return null.
+            setTimeout(() => {
+                console.log("Requesting dashboard analytics after 1s delay...");
+                google.script.run
+                    .withSuccessHandler(onAnalyticsSuccess)
+                    .withFailureHandler(onAnalyticsFailure)
+                    .getDashboardAnalytics(); // Call the server-side function
+            }, 1000); // 1 second delay
 
             // 3. Add listener for the new refresh button
             const refreshBtn = document.getElementById('refresh-analytics-btn');
@@ -25,6 +31,7 @@ function loadDashboardView() {
                     // Clear old data to show "Loading..."
                     clearAnalytics(); 
                     
+                    // No delay needed for a manual refresh
                     google.script.run
                         .withSuccessHandler(onAnalyticsSuccess)
                         .withFailureHandler(onAnalyticsFailure)
@@ -59,8 +66,9 @@ function clearAnalytics() {
     const topTravelersList = document.getElementById('top-travelers-list');
     if (topTravelersList) topTravelersList.innerHTML = loadingText;
 
-    const topDestinationsList = document.getElementById('top-destinations-list');
-    if (topDestinationsList) topDestinationsList.innerHTML = loadingText;
+    // MODIFICATION: Changed ID to match dashboard HTML
+    const recentActivityList = document.getElementById('recent-activity-list');
+    if (recentActivityList) recentActivityList.innerHTML = loadingText;
     
     const monthlyTrendChart = document.getElementById('monthly-trend-chart');
     if (monthlyTrendChart) monthlyTrendChart.innerHTML = loadingText;
@@ -74,6 +82,15 @@ function clearAnalytics() {
  * @param {object} data The analytics data from the server.
  */
 function onAnalyticsSuccess(data) {
+    // --- MODIFICATION: Added a check for null/undefined data ---
+    // This prevents the "Cannot read properties of null" error
+    if (!data) {
+        console.error("onAnalyticsSuccess received null data from server.");
+        onAnalyticsFailure({ message: "Received empty or null response from server." });
+        return;
+    }
+    // --- END MODIFICATION ---
+
     if (data.error) {
         onAnalyticsFailure({ message: data.error });
         return;
@@ -89,7 +106,8 @@ function onAnalyticsSuccess(data) {
  */
 function onAnalyticsFailure(error) {
     console.error("Failed to load dashboard analytics:", error);
-    showToast("Failed to load analytics: " + error.message, true);
+    const errorMessage = error.message || "An unknown error occurred.";
+    showToast("Failed to load analytics: " + errorMessage, true);
     
     // Populate with "Error" or "No data"
     populateDashboardAnalytics(null); // Pass null to handle empty/error state
@@ -118,19 +136,20 @@ function populateDashboardAnalytics(data) {
     const statActiveTravelers = document.getElementById('stat-active-travelers');
     const statThisMonth = document.getElementById('stat-this-month');
     
-    if (statTotalOrders) statTotalOrders.textContent = data?.summary?.total ?? 0;
-    if (statCompletedOrders) statCompletedOrders.textContent = data?.summary?.completed ?? 0;
-    if (statActiveTravelers) statActiveTravelers.textContent = data?.employeeStats?.length ?? 0;
+    // Use optional chaining (?.) and nullish coalescing (??) for safety
+    if (statTotalOrders) statTotalOrders.textContent = data?.totalOrders ?? 0;
+    if (statCompletedOrders) statCompletedOrders.textContent = data?.completedOrders ?? 0;
+    if (statActiveTravelers) statActiveTravelers.textContent = data?.topEmployees?.length ?? 0;
     
     const currentMonth = new Date().toISOString().substring(0, 7);
-    const thisMonthData = data?.monthlyStats?.find(m => m.month === currentMonth);
+    const thisMonthData = data?.monthlyData?.find(m => m.month === currentMonth);
     if (statThisMonth) statThisMonth.textContent = thisMonthData ? thisMonthData.count : 0;
 
     const topTravelersList = document.getElementById('top-travelers-list');
     if (topTravelersList) {
         topTravelersList.innerHTML = '';
-        if (data?.employeeStats && data.employeeStats.length > 0) {
-            data.employeeStats.forEach((emp, index) => {
+        if (data?.topEmployees && data.topEmployees.length > 0) {
+            data.topEmployees.forEach((emp, index) => {
                 const colors = ['bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-violet-500'];
                 const color = colors[index % colors.length];
                 topTravelersList.innerHTML += `
@@ -157,7 +176,9 @@ function populateDashboardAnalytics(data) {
             
             // Helper to format time ago
             const timeAgo = (date) => {
+                if (!date) return "sometime ago";
                 const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+                if (isNaN(seconds)) return "sometime ago";
                 let interval = seconds / 31536000;
                 if (interval > 1) return Math.floor(interval) + "y ago";
                 interval = seconds / 2592000;
@@ -172,15 +193,18 @@ function populateDashboardAnalytics(data) {
             };
 
             data.activityLog.forEach(log => {
-                const userEmail = log.user.split('@')[0]; // Get username part of email
+                const userEmail = (log.user || "unknown").split('@')[0]; // Get username part of email
+                const action = log.action || "Activity";
+                const details = log.details || "Details unknown";
+                
                 recentActivityList.innerHTML += `
-                    <div classli="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                    <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                         <div class="w-10 h-10 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0 shadow-sm">
                             ${userEmail.charAt(0).toUpperCase()}
                         </div>
                         <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-gray-800 truncate" title="${log.details}">
-                                <span class="font-bold text-pink-700">${log.action}</span> - ${log.details}
+                            <p class="text-sm font-medium text-gray-800 truncate" title="${details}">
+                                <span class="font-bold text-pink-700">${action}</span> - ${details}
                             </p>
                             <p class="text-xs text-gray-500">
                                 by <span class="font-medium">${userEmail}</span> • ${timeAgo(log.timestamp)}
@@ -195,6 +219,7 @@ function populateDashboardAnalytics(data) {
     }
     // END MODIFICATION
 
+    // This ID does not exist in your dashboard.html, so this block will be skipped.
     const topDestinationsList = document.getElementById('top-destinations-list');
     if (topDestinationsList) {
         topDestinationsList.innerHTML = '';
@@ -221,9 +246,9 @@ function populateDashboardAnalytics(data) {
     const monthlyTrendChart = document.getElementById('monthly-trend-chart');
     if (monthlyTrendChart) {
         monthlyTrendChart.innerHTML = '';
-        if (data?.monthlyStats && data.monthlyStats.length > 0) {
-            const maxMonthly = Math.max(...data.monthlyStats.map(m => m.count), 1);
-            data.monthlyStats.forEach(month => {
+        if (data?.monthlyData && data.monthlyData.length > 0) {
+            const maxMonthly = Math.max(...data.monthlyData.map(m => m.count), 1);
+            data.monthlyData.forEach(month => {
                 const percentage = (month.count / maxMonthly) * 100;
                 const [year, monthNum] = month.month.split('-');
                 const monthName = new Date(year, monthNum - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
@@ -512,6 +537,11 @@ function showViewModal(toId) {
                 <span class="detail-label">Destination:</span>
                 <span class="detail-value">${order.Destination}</span>
             </div>
+            <!-- MODIFICATION: Added KM Radius to modal -->
+            <div class="detail-row">
+                <span class="detail-label">Distance:</span>
+                <span class="detail-value">${order.KM_Radius || 'N/A'}</span>
+            </div>
             <div class="detail-row">
                 <span class="detail-label">Station:</span>
                 <span class="detail-value">${order.Station}</span>
@@ -543,7 +573,7 @@ function showViewModal(toId) {
             ${order.PDF_Link ? `
             <div class="detail-row">
                 <span class="detail-label">PDF:</span>
-                <span class="detail-value">
+                <span classD="detail-value">
                     <a href="${order.PDF_Link}" target="_blank" class="text-indigo-600 hover:text-indigo-800 font-medium">
                         View PDF Document
                     </a>
@@ -552,7 +582,7 @@ function showViewModal(toId) {
         </div>
         <div class="modal-footer-sticky">
             <button onclick="closeViewModal()" class="btn-cancel inline-flex items-center">Close</button>
-            <button onclick="closeViewModal(); loadUpdateView('${order.TO_ID}')" class="btn-primary inline-flex items-center">
+            <button onclick="handleEditClickFromModal('${order.TO_ID}')" class="btn-primary inline-flex items-center edit-btn-modal">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                 </svg>
@@ -560,9 +590,55 @@ function showViewModal(toId) {
             </button>
         </div>
     `;
+    
+    // --- MODIFICATION: Set lock state for modal's edit button ---
+    const editBtnModal = content.querySelector('.edit-btn-modal');
+    const datePrepared = new Date(order.Date_Prepared);
+    datePrepared.setHours(0, 0, 0, 0);
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dayOfWeek = today.getDay();
+    const daysToSubtract = (dayOfWeek === 0) ? 6 : (dayOfWeek - 1);
+    const startOfThisMonday = new Date(today);
+    startOfThisMonday.setDate(today.getDate() - daysToSubtract);
+    startOfThisMonday.setHours(0, 0, 0, 0);
+
+    const isLocked = (datePrepared < startOfThisMonday && !UNLOCKED_TO_IDS.includes(order.TO_ID));
+
+    if (isLocked) {
+        editBtnModal.dataset.locked = "true";
+        editBtnModal.title = "Edit (Locked - Admin Password Required)";
+        editBtnModal.innerHTML = `<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            </svg> Edit`;
+    } else {
+        editBtnModal.dataset.locked = "false";
+        editBtnModal.title = "Edit Travel Order";
+        // (the icon is already the correct 'edit' icon)
+    }
+    // --- END MODIFICATION ---
 
     modal.classList.remove('hidden');
 }
+
+// --- MODIFICATION: New helper function for modal edit button ---
+function handleEditClickFromModal(toId) {
+    const modalContent = document.getElementById('view-modal-content');
+    const editBtnModal = modalContent.querySelector('.edit-btn-modal');
+    const isLocked = editBtnModal.dataset.locked === "true";
+
+    closeViewModal(); // Close the view modal first
+
+    if (isLocked) {
+        _toIdToEdit = toId; // Store the ID
+        showPasswordModal(); // Show password prompt
+    } else {
+        loadUpdateView(toId); // Unlock, proceed as normal
+    }
+}
+// --- END MODIFICATION ---
+
 
 function loadMasterDataView() {
     console.log("=== LOADING MASTER DATA VIEW ===");
@@ -805,6 +881,11 @@ function toggleStatus(type, key, newStatus) {
         .withSuccessHandler(() => {
             item.status = newStatus;
             populateMasterData();
+            // We also need to refresh the global lists used by forms
+            if (type === 'employees') EMPLOYEES_LIST = [...list];
+            if (type === 'engineers') PROJECT_ENGINEERS = [...list];
+            if (type === 'approvers') APPROVERS_LIST = [...list];
+            
             showToast("Status updated successfully!");
             hideLoader();
         })
@@ -849,7 +930,7 @@ function handleSetExclusiveActiveApprover(name, position) {
             hideLoader();
             populateMasterData(); // Re-populate to revert optimistic toggle
         })
-        .setExclusiveActiveApprover(name, activeApproverData); 
+        .setActiveApprover(name, position); // MODIFIED: Pass position
 }
 
 
@@ -919,6 +1000,21 @@ function handleAddSubmit(type) {
         isValid = false;
     }
     
+    // Check for duplicates
+    const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
+    const list = listMap[type];
+    if (type === 'employees') {
+        if (list.some(e => e.employeeId === employeeId)) {
+            showFormError("add-employee-id", "This Employee ID already exists.");
+            isValid = false;
+        }
+    } else {
+         if (list.some(e => e.name.toUpperCase() === name.toUpperCase())) {
+            showFormError("add-name", "This Name already exists.");
+            isValid = false;
+        }
+    }
+
     if (!isValid) return;
 
     showLoader("Adding entry...");
@@ -931,6 +1027,7 @@ function handleAddSubmit(type) {
     }
     if (type === 'approvers') {
         data.position = position;
+        data.status = 'INACTIVE'; // Approvers are inactive by default
     }
     if (type === 'engineers') { // MODIFICATION: Add position for engineers
         data.position = position;
@@ -940,17 +1037,19 @@ function handleAddSubmit(type) {
     
     google.script.run
         .withSuccessHandler(() => {
-            const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
             listMap[type].push(data); 
 
-            if (type === 'approvers' && data.status === 'ACTIVE') {
-                handleSetExclusiveActiveApprover(data.name, data.position);
-                hideLoader(); 
-            } else {
-                populateMasterData();
-                showToast("Entry added successfully!");
-                hideLoader();
+            // Refresh position datalists
+            if (type === 'employees' && position && !EMPLOYEE_POSITIONS.includes(position)) {
+                EMPLOYEE_POSITIONS.push(position);
             }
+            if (type === 'engineers' && position && !ENGINEER_POSITIONS.includes(position)) {
+                ENGINEER_POSITIONS.push(position);
+            }
+
+            populateMasterData();
+            showToast("Entry added successfully!");
+            hideLoader();
         })
         .withFailureHandler((error) => {
             showToast("Failed to add entry: " + error.message, true);
@@ -1090,6 +1189,14 @@ function handleEditSubmit(type, key) {
             if (originalItem) {
                 originalItem.name = newName;
                 originalItem.position = newPosition;
+            }
+            
+            // Refresh position datalists
+            if (type === 'employees' && newPosition && !EMPLOYEE_POSITIONS.includes(newPosition)) {
+                EMPLOYEE_POSITIONS.push(newPosition);
+            }
+            if (type === 'engineers' && newPosition && !ENGINEER_POSITIONS.includes(newPosition)) {
+                ENGINEER_POSITIONS.push(newPosition);
             }
 
             populateMasterData();
