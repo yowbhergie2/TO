@@ -132,7 +132,7 @@ function validateNewToForm() {
         datePrepared: document.getElementById('datePrepared').value,
         inclusiveDates: document.getElementById('inclusiveDates').value,
         destination: document.getElementById('destination').value,
-        kmRadius: document.getElementById('kmRadius').value, // ADDED
+        kmRadius: document.getElementById('kmRadius').value, // MODIFICATION: Read value
         station: document.getElementById('station').value,
         purpose: document.getElementById('purpose').value,
         modeOfTravel: document.getElementById('modeOfTravel').value,
@@ -164,7 +164,7 @@ function validateNewToForm() {
         { id: 'datePrepared', name: 'Date Prepared' },
         { id: 'inclusiveDates', name: 'Inclusive Dates' },
         { id: 'destination', name: 'Destination' },
-        { id: 'kmRadius', name: 'Distance Radius' }, // ADDED
+        { id: 'kmRadius', name: 'Distance Radius' }, // MODIFICATION: Add to validation
         { id: 'station', name: 'Station' },
         { id: 'purpose', name: 'Purpose' },
         { id: 'modeOfTravel', name: 'Mode of Travel' },
@@ -226,7 +226,7 @@ function validateNewToForm() {
         dateSubmission: submission.toISOString(),
         employees: employees,
         destination: formData.destination,
-        kmRadius: formData.kmRadius, // ADDED
+        kmRadius: formData.kmRadius, // MODIFICATION: Add to returned object
         station: formData.station,
         purpose: formData.purpose,
         modeOfTravel: formData.modeOfTravel,
@@ -319,6 +319,9 @@ function populateUpdateForm(data) {
     document.getElementById('update-destination').value = data.Destination;
     document.getElementById('update-station').value = data.Station || '';
     document.getElementById('update-purpose').value = data.Purpose;
+
+    // MODIFICATION: Populate KM Radius, default to WITHIN if not present
+    document.getElementById('update-kmRadius').value = data.KM_Radius || 'WITHIN 50 KM RADIUS';
     
     const modeSelect = document.getElementById('update-modeOfTravel');
     const standardModes = ['GOVERNMENT VEHICLE', 'PRIVATE VEHICLE', 'PUBLIC TRANSPORT', 'AIR TRAVEL', 'SEA TRAVEL'];
@@ -442,7 +445,7 @@ function validateUpdateToForm() {
         datePrepared: document.getElementById('update-datePrepared').value,
         inclusiveDates: document.getElementById('update-inclusiveDates').value,
         destination: document.getElementById('update-destination').value,
-        kmRadius: document.getElementById('update-kmRadius').value, // ADDED
+        kmRadius: document.getElementById('update-kmRadius').value, // MODIFICATION: Read value
         station: document.getElementById('update-station').value,
         purpose: document.getElementById('update-purpose').value,
         modeOfTravel: document.getElementById('update-modeOfTravel').value,
@@ -474,7 +477,7 @@ function validateUpdateToForm() {
         { id: 'update-datePrepared', name: 'Date Prepared', key: 'datePrepared' },
         { id: 'update-inclusiveDates', name: 'Inclusive Dates', key: 'inclusiveDates' },
         { id: 'update-destination', name: 'Destination', key: 'destination' },
-        { id: 'update-kmRadius', name: 'Distance Radius', key: 'kmRadius' }, // ADDED
+        { id: 'update-kmRadius', name: 'Distance Radius', key: 'kmRadius' }, // MODIFICATION: Add to validation
         { id: 'update-station', name: 'Station', key: 'station' },
         { id: 'update-purpose', name: 'Purpose', key: 'purpose' },
         { id: 'update-modeOfTravel', name: 'Mode of Travel', key: 'modeOfTravel' },
@@ -528,7 +531,7 @@ function validateUpdateToForm() {
         dateSubmission: submission.toISOString(),
         employees: employees,
         destination: formData.destination,
-        kmRadius: formData.kmRadius, // ADDED
+        kmRadius: formData.kmRadius, // MODIFICATION: Add to returned object
         station: formData.station,
         purpose: formData.purpose,
         modeOfTravel: formData.modeOfTravel,
@@ -654,6 +657,12 @@ function resetNewToForm() {
     // Disable dependent date pickers
     document.getElementById('inclusiveDates').disabled = true;
     document.getElementById('dateSubmission').disabled = true;
+    
+    // MODIFICATION: Reset kmRadius to default
+    const kmRadiusSelect = document.getElementById('kmRadius');
+    if (kmRadiusSelect) {
+        kmRadiusSelect.value = 'WITHIN 50 KM RADIUS';
+    }
 
     // Reset employees
     const employeesContainer = document.getElementById('employees-container');
