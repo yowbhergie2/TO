@@ -82,16 +82,15 @@
                         <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
                     </div>
                     
-                    <!-- NEW: 50 KM RADIUS FIELD - ADD THIS -->
-<div class="input-group">
-    <label for="update-kmRadius" class="input-label">Distance Radius</label>
-    <select id="update-kmRadius" name="kmRadius" required class="input-field">
-        <option value="">Select Distance Radius</option>
-        <option value="WITHIN 50 KM RADIUS">WITHIN 50 KM RADIUS</option>
-        <option value="BEYOND 50 KM RADIUS">BEYOND 50 KM RADIUS</option>
-    </select>
-    <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
-</div>
+                    <!-- 50 KM RADIUS FIELD -->
+                    <div class="input-group">
+                        <label for="update-kmRadius" class="input-label">Distance Radius</label>
+                        <select id="update-kmRadius" name="kmRadius" required class="input-field">
+                            <option value="WITHIN 50 KM RADIUS">WITHIN 50 KM RADIUS</option>
+                            <option value="BEYOND 50 KM RADIUS">BEYOND 50 KM RADIUS</option>
+                        </select>
+                        <p class="form-error-msg text-sm text-red-500 mt-1 hidden"></p>
+                    </div>
 
                     <div class="input-group relative">
                         <label for="update-station" class="input-label">Station</label>
