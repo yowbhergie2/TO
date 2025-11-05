@@ -216,6 +216,7 @@ function saveTravelOrder(form) {
     
     const employeesJson = JSON.stringify(form.employees.map(e => e.toUpperCase()));
 
+    // MODIFICATION: Use form.kmRadius instead of hardcoded default
     const newRow = [
       toId,
       Utilities.formatDate(datePrepared, "Asia/Manila", "yyyy-MM-dd"),
@@ -223,7 +224,7 @@ function saveTravelOrder(form) {
       Utilities.formatDate(end, "Asia/Manila", "yyyy-MM-dd"),
       employeesJson,
       form.destination.toUpperCase(),
-      form.kmRadius || "WITHIN 50 KM RADIUS",
+      form.kmRadius || "WITHIN 50 KM RADIUS", // Use form value, with fallback
       form.station.toUpperCase(),
       form.purpose.toUpperCase(),
       form.modeOfTravel.toUpperCase(),
@@ -236,6 +237,7 @@ function saveTravelOrder(form) {
       userEmail,
       now
     ];
+    // END MODIFICATION
 
     sheet.appendRow(newRow);
     
@@ -278,13 +280,14 @@ function updateTravelOrder(form, toId) {
 
     const employeesJson = JSON.stringify(form.employees.map(e => e.toUpperCase()));
 
+    // MODIFICATION: Use form.kmRadius instead of hardcoded default
     const updateData = {
       "Date_Prepared": Utilities.formatDate(datePrepared, "Asia/Manila", "yyyy-MM-dd"),
       "Inclusive_Start": Utilities.formatDate(start, "Asia/Manila", "yyyy-MM-dd"),
       "Inclusive_End": Utilities.formatDate(end, "Asia/Manila", "yyyy-MM-dd"),
       "Employees": employeesJson,
       "Destination": form.destination.toUpperCase(),
-      "KM_Radius": form.kmRadius || "WITHIN 50 KM RADIUS",
+      "KM_Radius": form.kmRadius || "WITHIN 50 KM RADIUS", // Use form value, with fallback
       "Station": form.station.toUpperCase(),
       "Purpose": form.purpose.toUpperCase(),
       "Mode_of_Travel": form.modeOfTravel.toUpperCase(),
@@ -295,6 +298,7 @@ function updateTravelOrder(form, toId) {
       "Status": "Pending PDF",
       "PDF_Link": ""
     };
+    // END MODIFICATION
 
     headers.forEach((header, index) => {
       if (updateData[header] !== undefined) {
@@ -365,6 +369,7 @@ function generateAndLinkPdf(toId, rowNumber) {
     toFormSheet.getRange('C7').setValue(toId);
     toFormSheet.getRange('G7').setValue(Utilities.formatDate(datePrepared, "Asia/Manila", "MMMM dd, yyyy"));
     
+    // This logic already correctly uses the KM_Radius field
     const destinationWithRadius = `${data.Destination} (${data.KM_Radius})`;
     toFormSheet.getRange('C24').setValue(destinationWithRadius);
     
@@ -390,6 +395,7 @@ function generateAndLinkPdf(toId, rowNumber) {
       }
     });
     
+    // This logic already correctly uses the KM_Radius field
     const row41Range = toFormSheet.getRange('A41:Z41');
     if (data.KM_Radius === 'BEYOND 50 KM RADIUS') {
       row41Range.setFontColor('#000000');
