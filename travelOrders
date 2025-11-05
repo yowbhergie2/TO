@@ -5,81 +5,92 @@
                 <h1 class="text-3xl font-bold text-white">Travel Orders</h1>
                 <p class="text-indigo-100 mt-1">View and manage all travel orders</p>
             </div>
-            <!-- MODIFICATION: Centered and text changed -->
+            <!-- MODIFICATION: Removed search bar, kept total orders -->
             <div class="flex gap-3 justify-center w-full sm:w-auto">
                 <div class="bg-white bg-opacity-20 backdrop-blur-sm rounded-lg px-4 py-2">
                     <p class="text-white text-sm font-medium">Travel Orders</p>
                     <p id="total-orders" class="text-white text-3xl font-bold">0</p>
                 </div>
-                <div class="bg-white bg-opacity-20 backdrop-blur-sm rounded-lg px-4 py-2 min-w-[200px]">
-                    <input type="text" id="dashboard-search" placeholder="🔍 Search..." class="bg-transparent text-white placeholder-white placeholder-opacity-70 border-0 rounded-lg px-3 py-2 w-full focus:outline-none focus:bg-white focus:bg-opacity-20 transition-all">
-                </div>
             </div>
         </div>
     </div>
 
-    <div class="overflow-x-auto">
-        <table id="to-table" class="min-w-full divide-y divide-gray-200">
-            <thead>
-                <tr>
-                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div class="flex items-center">
-                            <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                            </svg>
-                            TO_ID
-                        </div>
-                    </th>
-                    <!-- MODIFICATION: Added Date Prepared Header -->
-                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div class="flex items-center">
-                            <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                            </svg>
-                            Date Prepared
-                        </div>
-                    </th>
-                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div class="flex items-center">
-                            <svg class="w-4 h-4 mr-2 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                            </svg>
-                            Employees
-                        </div>
-                    </th>
-                    <!-- MODIFICATION: Changed icon and position -->
-                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div class="flex items-center">
-                            <svg class="w-4 h-4 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                            </svg>
-                            Inclusive Dates
-                        </div>
-                    </th>
-                    <!-- MODIFICATION: Removed Status Header -->
-                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="to-table-body" class="bg-white divide-y divide-gray-200">
-                <tr>
-                    <td colspan="5" class="px-6 py-12 text-center">
-                        <div class="flex flex-col items-center justify-center">
-                            <div class="loader-spinner mb-4"></div>
-                            <p class="text-gray-500 font-medium">Loading Travel Orders...</p>
-                        </div>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <div id="dashboard-empty-state" class="hidden empty-state">
-        <div class="empty-state-icon">
-            <span>📋</span>
+    <!-- MODIFICATION: Added p-6 wrapper for content below header -->
+    <div class="p-6">
+        
+        <!-- MODIFICATION: Added new search bar, styled like masterData -->
+        <div class="mb-6">
+            <div class="input-group relative">
+                <input type="text" id="dashboard-search" placeholder="🔍 Search by TO_ID, Employee, Dates, etc..." class="input-field w-full" autocomplete="off">
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                </div>
+            </div>
         </div>
-        <p class="text-gray-600 text-lg font-semibold">No travel orders found</p>
-        <p class="mt-2 text-sm text-gray-500">Click "New Travel Order" to create your first entry</p>
-    </div>
+        <!-- END MODIFICATION -->
+
+        <div class="overflow-x-auto">
+            <table id="to-table" class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            <div class="flex items-center">
+                                <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                </svg>
+                                TO_ID
+                            </div>
+                        </th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            <div class="flex items-center">
+                                <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                Date Prepared
+                            </div>
+                        </th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            <div class="flex items-center">
+                                <svg class="w-4 h-4 mr-2 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                                </svg>
+                                Employees
+                            </div>
+                        </th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            <div class="flex items-center">
+                                <svg class="w-4 h-4 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                Inclusive Dates
+                            </div>
+                        </th>
+                        <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="to-table-body" class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td colspan="5" class="px-6 py-12 text-center">
+                            <div class="flex flex-col items-center justify-center">
+                                <div class="loader-spinner mb-4"></div>
+                                <p class="text-gray-500 font-medium">Loading Travel Orders...</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="dashboard-empty-state" class="hidden empty-state">
+            <div class="empty-state-icon">
+                <span>📋</span>
+            </div>
+            <p class="text-gray-600 text-lg font-semibold">No travel orders found</p>
+            <p class="mt-2 text-sm text-gray-500">Click "New Travel Order" to create your first entry</p>
+        </div>
+    </div> <!-- END of p-6 wrapper -->
 </div>
 
 <div id="view-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
@@ -93,18 +104,15 @@
         <td class="px-6 py-4 whitespace-nowrap">
             <div class="text-sm font-bold text-indigo-600 to-id"></div>
         </td>
-        <!-- MODIFICATION: Added Date Prepared Cell -->
         <td class="px-6 py-4 whitespace-nowrap">
             <div class="text-sm text-gray-900 font-medium date-prepared"></div>
         </td>
         <td class="px-6 py-4">
             <div class="text-sm text-gray-900 employees"></div>
         </td>
-        <!-- MODIFICATION: Moved Inclusive Dates Cell -->
         <td class="px-6 py-4 whitespace-nowrap">
             <div class="text-sm text-gray-900 font-medium inclusive-dates"></div>
         </td>
-        <!-- MODIFICATION: Removed Status Cell -->
         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
             <div class="flex gap-2">
                 <button class="view-btn action-btn action-btn-view" title="View Details">
@@ -136,4 +144,3 @@
         </td>
     </tr>
 </template>
-
