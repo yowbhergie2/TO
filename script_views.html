@@ -4,34 +4,26 @@ function loadDashboardView() {
     showLoader("Loading Dashboard...");
     updateNavActiveState('dashboard');
 
-    // 1. Get the HTML shell
     google.script.run
         .withSuccessHandler(html => {
             console.log("Dashboard HTML received");
             document.getElementById('content-area').innerHTML = html;
             
-            // 2. Now, get the data from the server-side function
-            // --- MODIFICATION: Added a 1-second delay ---
-            // This is to prevent a potential race condition with getInitialData()
-            // which might be causing the server to return null.
             setTimeout(() => {
-                console.log("Requesting dashboard analytics after 1s delay...");
+                console.log("Requesting dashboard analytics...");
                 google.script.run
                     .withSuccessHandler(onAnalyticsSuccess)
                     .withFailureHandler(onAnalyticsFailure)
-                    .getDashboardAnalytics(); // Call the server-side function
-            }, 1000); // 1 second delay
+                    .getDashboardAnalytics();
+            }, 500);
 
-            // 3. Add listener for the new refresh button
             const refreshBtn = document.getElementById('refresh-analytics-btn');
             if (refreshBtn) {
                 refreshBtn.addEventListener('click', () => {
                     console.log("Refresh button clicked");
                     showLoader("Refreshing Analytics...");
-                    // Clear old data to show "Loading..."
                     clearAnalytics(); 
                     
-                    // No delay needed for a manual refresh
                     google.script.run
                         .withSuccessHandler(onAnalyticsSuccess)
                         .withFailureHandler(onAnalyticsFailure)
@@ -47,9 +39,6 @@ function loadDashboardView() {
         .getDashboardView();
 }
 
-/**
- * @description Clears analytics to show loading state on refresh.
- */
 function clearAnalytics() {
     const loadingText = '<p class="text-gray-400 text-sm text-center py-4">Loading data...</p>';
     
@@ -66,9 +55,8 @@ function clearAnalytics() {
     const topTravelersList = document.getElementById('top-travelers-list');
     if (topTravelersList) topTravelersList.innerHTML = loadingText;
 
-    // MODIFICATION: Changed ID to match dashboard HTML
-    const recentActivityList = document.getElementById('recent-activity-list');
-    if (recentActivityList) recentActivityList.innerHTML = loadingText;
+    const topPurposesList = document.getElementById('top-purposes-list');
+    if (topPurposesList) topPurposesList.innerHTML = loadingText;
     
     const monthlyTrendChart = document.getElementById('monthly-trend-chart');
     if (monthlyTrendChart) monthlyTrendChart.innerHTML = loadingText;
@@ -77,19 +65,12 @@ function clearAnalytics() {
     if (modeOfTravelChart) modeOfTravelChart.innerHTML = loadingText;
 }
 
-/**
- * @description Success handler for fetching dashboard analytics.
- * @param {object} data The analytics data from the server.
- */
 function onAnalyticsSuccess(data) {
-    // --- MODIFICATION: Added a check for null/undefined data ---
-    // This prevents the "Cannot read properties of null" error
     if (!data) {
         console.error("onAnalyticsSuccess received null data from server.");
         onAnalyticsFailure({ message: "Received empty or null response from server." });
         return;
     }
-    // --- END MODIFICATION ---
 
     if (data.error) {
         onAnalyticsFailure({ message: data.error });
@@ -100,34 +81,15 @@ function onAnalyticsSuccess(data) {
     hideLoader();
 }
 
-/**
- * @description Failure handler for fetching dashboard analytics.
- * @param {object} error The error object.
- */
 function onAnalyticsFailure(error) {
     console.error("Failed to load dashboard analytics:", error);
     const errorMessage = error.message || "An unknown error occurred.";
     showToast("Failed to load analytics: " + errorMessage, true);
     
-    // Populate with "Error" or "No data"
-    populateDashboardAnalytics(null); // Pass null to handle empty/error state
+    populateDashboardAnalytics(null);
     hideLoader();
 }
 
-function loadDashboardAnalyticsDirectly() {
-    // This function is deprecated, replaced by onAnalyticsSuccess
-    console.warn("loadDashboardAnalyticsDirectly is deprecated.");
-}
-
-function calculateAnalytics(allOrders) {
-    // This function is deprecated, analytics are now server-side.
-    console.warn("calculateAnalytics is deprecated.");
-}
-
-/**
- * @description Populates the dashboard elements with analytics data.
- * @param {object | null} data The analytics data. If null, shows error/empty state.
- */
 function populateDashboardAnalytics(data) {
     console.log("=== POPULATING DASHBOARD ANALYTICS ===");
     
@@ -136,7 +98,6 @@ function populateDashboardAnalytics(data) {
     const statActiveTravelers = document.getElementById('stat-active-travelers');
     const statThisMonth = document.getElementById('stat-this-month');
     
-    // Use optional chaining (?.) and nullish coalescing (??) for safety
     if (statTotalOrders) statTotalOrders.textContent = data?.totalOrders ?? 0;
     if (statCompletedOrders) statCompletedOrders.textContent = data?.completedOrders ?? 0;
     if (statActiveTravelers) statActiveTravelers.textContent = data?.topEmployees?.length ?? 0;
@@ -168,78 +129,26 @@ function populateDashboardAnalytics(data) {
         }
     }
 
-    // MODIFICATION: Populate Recent Activity
-    const recentActivityList = document.getElementById('recent-activity-list');
-    if (recentActivityList) {
-        recentActivityList.innerHTML = '';
-        if (data?.activityLog && data.activityLog.length > 0) {
-            
-            // Helper to format time ago
-            const timeAgo = (date) => {
-                if (!date) return "sometime ago";
-                const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-                if (isNaN(seconds)) return "sometime ago";
-                let interval = seconds / 31536000;
-                if (interval > 1) return Math.floor(interval) + "y ago";
-                interval = seconds / 2592000;
-                if (interval > 1) return Math.floor(interval) + "mo ago";
-                interval = seconds / 86400;
-                if (interval > 1) return Math.floor(interval) + "d ago";
-                interval = seconds / 3600;
-                if (interval > 1) return Math.floor(interval) + "h ago";
-                interval = seconds / 60;
-                if (interval > 1) return Math.floor(interval) + "m ago";
-                return "Just now";
-            };
-
-            data.activityLog.forEach(log => {
-                const userEmail = (log.user || "unknown").split('@')[0]; // Get username part of email
-                const action = log.action || "Activity";
-                const details = log.details || "Details unknown";
-                
-                recentActivityList.innerHTML += `
-                    <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                        <div class="w-10 h-10 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0 shadow-sm">
-                            ${userEmail.charAt(0).toUpperCase()}
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-gray-800 truncate" title="${details}">
-                                <span class="font-bold text-pink-700">${action}</span> - ${details}
-                            </p>
-                            <p class="text-xs text-gray-500">
-                                by <span class="font-medium">${userEmail}</span> • ${timeAgo(log.timestamp)}
-                            </p>
-                        </div>
-                    </div>
-                `;
-            });
-        } else {
-            recentActivityList.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No activity logged yet</p>';
-        }
-    }
-    // END MODIFICATION
-
-    // This ID does not exist in your dashboard.html, so this block will be skipped.
-    const topDestinationsList = document.getElementById('top-destinations-list');
-    if (topDestinationsList) {
-        topDestinationsList.innerHTML = '';
-        if (data?.destinationStats && data.destinationStats.length > 0) {
-            data.destinationStats.forEach((dest, index) => {
+    const topPurposesList = document.getElementById('top-purposes-list');
+    if (topPurposesList) {
+        topPurposesList.innerHTML = '';
+        if (data?.topPurposes && data.topPurposes.length > 0) {
+            data.topPurposes.forEach((item, index) => {
                 const colors = ['bg-pink-500', 'bg-rose-500', 'bg-red-500', 'bg-orange-500', 'bg-amber-500'];
                 const color = colors[index % colors.length];
-                topDestinationsList.innerHTML += `
+                topPurposesList.innerHTML += `
                     <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                         <div class="flex items-center flex-1">
                             <div class="w-10 h-10 ${color} rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 shadow-md">
-                                ${dest.count}
+                                ${item.count}
                             </div>
-                            <span class="text-sm font-medium text-gray-700">${dest.name}</span>
+                            <span class="text-sm font-medium text-gray-700">${item.purpose}</span>
                         </div>
                     </div>
                 `;
             });
         } else {
-            topDestinationsList.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No data available</p>';
+            topPurposesList.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No data available</p>';
         }
     }
 
@@ -346,28 +255,15 @@ function populateDashboardTable(data) {
 
     data.sort((a, b) => new Date(b.Created_Date) - new Date(a.Created_Date));
 
-    // MODIFICATION: Get start of this week (Monday)
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize today
+    today.setHours(0, 0, 0, 0);
     
-    // Calculate days to subtract to get to Monday (0=Sun, 1=Mon, ..., 6=Sat)
-    // We want Monday (1) to be the start.
-    const dayOfWeek = today.getDay(); // 0 (Sun) - 6 (Sat)
-    
-    // If today is Sunday (0), subtract 6 days to get last Monday.
-    // If today is Monday (1), subtract 0 days.
-    // If today is Tuesday (2), subtract 1 day.
-    // ...
-    // If today is Saturday (6), subtract 5 days.
+    const dayOfWeek = today.getDay();
     const daysToSubtract = (dayOfWeek === 0) ? 6 : (dayOfWeek - 1);
     
     const startOfThisMonday = new Date(today);
     startOfThisMonday.setDate(today.getDate() - daysToSubtract);
-    startOfThisMonday.setHours(0, 0, 0, 0); // Normalize to start of Monday
-    
-    // console.log("Today:", today.toString());
-    // console.log("Start of this Monday:", startOfThisMonday.toString());
-    // END MODIFICATION
+    startOfThisMonday.setHours(0, 0, 0, 0);
 
     data.forEach(item => {
         try {
@@ -376,7 +272,6 @@ function populateDashboardTable(data) {
             
             row.dataset.toid = item.TO_ID;
             clone.querySelector('.to-id').textContent = item.TO_ID;
-            // MODIFICATION: Add Date Prepared population
             clone.querySelector('.date-prepared').textContent = formatDateForDisplay(item.Date_Prepared);
             clone.querySelector('.inclusive-dates').textContent = formatInclusiveDates(item.Inclusive_Start, item.Inclusive_End);
             
@@ -385,8 +280,6 @@ function populateDashboardTable(data) {
                 employeesDisplay = employeesDisplay.join(', ');
             }
             clone.querySelector('.employees').textContent = employeesDisplay;
-            
-            // MODIFICATION: Removed Status logic
             
             const viewBtn = clone.querySelector('.view-btn');
             const editBtn = clone.querySelector('.edit-btn');
@@ -397,13 +290,9 @@ function populateDashboardTable(data) {
             editBtn.dataset.toid = item.TO_ID;
             pdfBtn.dataset.toid = item.TO_ID;
 
-            // --- MODIFICATION: Updated lock logic ---
             const datePrepared = new Date(item.Date_Prepared);
-            datePrepared.setHours(0, 0, 0, 0); // Normalize date prepared
+            datePrepared.setHours(0, 0, 0, 0);
             
-            // I-lock ang button kung:
-            // 1. Ang petsa ay mas maaga sa Lunes NGAYONG LINGGO
-            // 2. AT HINDI pa ito na-uunlock (wala sa UNLOCKED_TO_IDS)
             const isLocked = (datePrepared < startOfThisMonday && !UNLOCKED_TO_IDS.includes(item.TO_ID));
             
             if (isLocked) {
@@ -415,18 +304,15 @@ function populateDashboardTable(data) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                     </svg> Edit`;
             } else {
-                // Ito ay para sa mga bagong entry O sa mga na-unlock
                 editBtn.dataset.locked = "false";
                 editBtn.title = "Edit Travel Order";
                 
-                // MODIFICATION: Ensure unlocked styles are applied
                 editBtn.classList.remove('action-btn-locked');
                 editBtn.classList.add('action-btn-edit');
                 editBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                     </svg> Edit`;
             }
-            // --- END MODIFICATION ---
 
             if (item.PDF_Link) {
                 pdfLink.href = item.PDF_Link;
@@ -462,17 +348,15 @@ function setupDashboardListeners() {
             showViewModal(viewBtn.dataset.toid);
         } else if (editBtn) {
             e.preventDefault();
-            // MODIFICATION: Check for lock
             const isLocked = editBtn.dataset.locked === "true";
             const toId = editBtn.dataset.toid;
             
             if (isLocked) {
-                _toIdToEdit = toId; // Store the ID
-                showPasswordModal(); // Show password prompt
+                _toIdToEdit = toId;
+                showPasswordModal();
             } else {
-                loadUpdateView(toId); // Unlock, proceed as normal
+                loadUpdateView(toId);
             }
-            // END MODIFICATION
         } else if (pdfBtn) {
             e.preventDefault();
             handleGeneratePdf(pdfBtn.dataset.toid);
@@ -537,7 +421,6 @@ function showViewModal(toId) {
                 <span class="detail-label">Destination:</span>
                 <span class="detail-value">${order.Destination}</span>
             </div>
-            <!-- MODIFICATION: Added KM Radius to modal -->
             <div class="detail-row">
                 <span class="detail-label">Distance:</span>
                 <span class="detail-value">${order.KM_Radius || 'N/A'}</span>
@@ -573,7 +456,7 @@ function showViewModal(toId) {
             ${order.PDF_Link ? `
             <div class="detail-row">
                 <span class="detail-label">PDF:</span>
-                <span classD="detail-value">
+                <span class="detail-value">
                     <a href="${order.PDF_Link}" target="_blank" class="text-indigo-600 hover:text-indigo-800 font-medium">
                         View PDF Document
                     </a>
@@ -591,7 +474,6 @@ function showViewModal(toId) {
         </div>
     `;
     
-    // --- MODIFICATION: Set lock state for modal's edit button ---
     const editBtnModal = content.querySelector('.edit-btn-modal');
     const datePrepared = new Date(order.Date_Prepared);
     datePrepared.setHours(0, 0, 0, 0);
@@ -615,29 +497,25 @@ function showViewModal(toId) {
     } else {
         editBtnModal.dataset.locked = "false";
         editBtnModal.title = "Edit Travel Order";
-        // (the icon is already the correct 'edit' icon)
     }
-    // --- END MODIFICATION ---
 
     modal.classList.remove('hidden');
 }
 
-// --- MODIFICATION: New helper function for modal edit button ---
 function handleEditClickFromModal(toId) {
     const modalContent = document.getElementById('view-modal-content');
     const editBtnModal = modalContent.querySelector('.edit-btn-modal');
     const isLocked = editBtnModal.dataset.locked === "true";
 
-    closeViewModal(); // Close the view modal first
+    closeViewModal();
 
     if (isLocked) {
-        _toIdToEdit = toId; // Store the ID
-        showPasswordModal(); // Show password prompt
+        _toIdToEdit = toId;
+        showPasswordModal();
     } else {
-        loadUpdateView(toId); // Unlock, proceed as normal
+        loadUpdateView(toId);
     }
 }
-// --- END MODIFICATION ---
 
 
 function loadMasterDataView() {
@@ -654,13 +532,12 @@ function loadMasterDataView() {
                 populateMasterData();
                 setupMasterDataListeners(); 
                 
-                // MODIFICATION: Populate the new datalist with COMBINED positions
                 const datalist = document.getElementById('position-datalist');
                 if (datalist) {
-                    datalist.innerHTML = ''; // Clear old
+                    datalist.innerHTML = '';
                     const allPositions = [...new Set([...EMPLOYEE_POSITIONS, ...ENGINEER_POSITIONS])];
                     allPositions.forEach(pos => {
-                        if (pos) { // Ensure not empty
+                        if (pos) {
                             const option = document.createElement('option');
                             option.value = pos;
                             datalist.appendChild(option);
@@ -704,11 +581,10 @@ function setupMasterDataListeners() {
         });
     }
 
-    // MODIFICATION: Add search listener
     const searchInput = document.getElementById('master-data-search');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
-            populateMasterData(); // Re-populate all lists with the search filter
+            populateMasterData();
         });
     }
 }
@@ -719,7 +595,6 @@ function populateMasterData() {
     console.log("Engineers:", PROJECT_ENGINEERS.length);
     console.log("Approvers:", APPROVERS_LIST.length);
     
-    // MODIFICATION: Get search term
     const searchInput = document.getElementById('master-data-search');
     const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
 
@@ -728,7 +603,7 @@ function populateMasterData() {
     populateMasterList('approvers', APPROVERS_LIST, searchTerm);
 }
 
-function populateMasterList(type, data, searchTerm = '') { // MODIFICATION: Added searchTerm
+function populateMasterList(type, data, searchTerm = '') {
     const activeContainer = document.getElementById(`active-${type}`);
     const inactiveContainer = document.getElementById(`inactive-${type}`);
     const template = document.getElementById('master-item-template');
@@ -741,16 +616,14 @@ function populateMasterList(type, data, searchTerm = '') { // MODIFICATION: Adde
     activeContainer.innerHTML = '';
     inactiveContainer.innerHTML = '';
 
-    // MODIFICATION: Filter data based on search term
     const filteredData = data.filter(item => {
-        if (!searchTerm) return true; // No search, return all
+        if (!searchTerm) return true;
         const name = item.name ? item.name.toLowerCase() : '';
         const position = item.position ? item.position.toLowerCase() : '';
         const employeeId = item.employeeId ? item.employeeId.toLowerCase() : '';
         return name.includes(searchTerm) || position.includes(searchTerm) || employeeId.includes(searchTerm);
     });
 
-    // MODIFICATION: Use filteredData instead of data
     const activeItems = filteredData.filter(item => item.status.trim().toUpperCase() !== 'INACTIVE');
     const inactiveItems = filteredData.filter(item => item.status.trim().toUpperCase() === 'INACTIVE');
 
@@ -770,7 +643,7 @@ function populateMasterList(type, data, searchTerm = '') { // MODIFICATION: Adde
         } else {
             key = item.name;
             employeeId = null; 
-            position = (type === 'approvers' || type === 'engineers') ? item.position : null; // MODIFICATION: Also for engineers
+            position = (type === 'approvers' || type === 'engineers') ? item.position : null;
         }
 
         if (position) {
@@ -781,9 +654,8 @@ function populateMasterList(type, data, searchTerm = '') { // MODIFICATION: Adde
             clone.querySelector('.item-position').classList.add('hidden');
         }
 
-        // MODIFICATION: Setup toggle switch
         const toggle = clone.querySelector('.toggle-status-checkbox');
-        toggle.checked = true; // It's active
+        toggle.checked = true;
         toggle.addEventListener('click', (e) => {
             const newStatus = e.target.checked ? 'ACTIVE' : 'INACTIVE';
             toggleStatus(type, key, newStatus);
@@ -798,7 +670,7 @@ function populateMasterList(type, data, searchTerm = '') { // MODIFICATION: Adde
     inactiveItems.forEach(item => {
         const clone = template.content.cloneNode(true);
         const itemDiv = clone.querySelector('.master-item');
-        itemDiv.classList.add('inactive'); // MODIFICATION: Add inactive class for styling
+        itemDiv.classList.add('inactive');
         itemDiv.querySelector('.item-name').textContent = item.name;
         itemDiv.querySelector('.item-name').classList.add('text-gray-500');
 
@@ -814,7 +686,7 @@ function populateMasterList(type, data, searchTerm = '') { // MODIFICATION: Adde
         } else {
             key = item.name;
             employeeId = null; 
-            position = (type === 'approvers' || type === 'engineers') ? item.position : null; // MODIFICATION: Also for engineers
+            position = (type === 'approvers' || type === 'engineers') ? item.position : null;
         }
 
         if (position) {
@@ -826,9 +698,8 @@ function populateMasterList(type, data, searchTerm = '') { // MODIFICATION: Adde
             clone.querySelector('.item-position').classList.add('hidden');
         }
 
-        // MODIFICATION: Setup toggle switch
         const toggle = clone.querySelector('.toggle-status-checkbox');
-        toggle.checked = false; // It's inactive
+        toggle.checked = false;
         toggle.addEventListener('click', (e) => {
             const newStatus = e.target.checked ? 'ACTIVE' : 'INACTIVE';
             toggleStatus(type, key, newStatus);
@@ -881,7 +752,6 @@ function toggleStatus(type, key, newStatus) {
         .withSuccessHandler(() => {
             item.status = newStatus;
             populateMasterData();
-            // We also need to refresh the global lists used by forms
             if (type === 'employees') EMPLOYEES_LIST = [...list];
             if (type === 'engineers') PROJECT_ENGINEERS = [...list];
             if (type === 'approvers') APPROVERS_LIST = [...list];
@@ -892,7 +762,7 @@ function toggleStatus(type, key, newStatus) {
         .withFailureHandler((error) => {
             showToast("Failed to update status: " + error.message, true);
             hideLoader();
-            populateMasterData(); // Re-populate to revert optimistic toggle
+            populateMasterData();
         })
         .updateMasterData(typeMap[type], key, updateData); 
 }
@@ -928,9 +798,9 @@ function handleSetExclusiveActiveApprover(name, position) {
         .withFailureHandler((error) => {
             showToast("Failed to update approver: " + error.message, true);
             hideLoader();
-            populateMasterData(); // Re-populate to revert optimistic toggle
+            populateMasterData();
         })
-        .setActiveApprover(name, position); // MODIFIED: Pass position
+        .setActiveApprover(name, position);
 }
 
 
@@ -962,9 +832,9 @@ function showAddForm(type) {
         positionGroup.classList.remove('hidden');
         document.getElementById('add-position').required = false; 
         document.getElementById('add-employee-id').required = false;
-    } else { // engineers
+    } else {
         employeeIdGroup.classList.add('hidden');
-        positionGroup.classList.remove('hidden'); // MODIFICATION: Show position for engineers
+        positionGroup.classList.remove('hidden');
         document.getElementById('add-position').required = false;
         document.getElementById('add-employee-id').required = false;
     }
@@ -1000,7 +870,6 @@ function handleAddSubmit(type) {
         isValid = false;
     }
     
-    // Check for duplicates
     const listMap = { employees: EMPLOYEES_LIST, engineers: PROJECT_ENGINEERS, approvers: APPROVERS_LIST };
     const list = listMap[type];
     if (type === 'employees') {
@@ -1027,9 +896,9 @@ function handleAddSubmit(type) {
     }
     if (type === 'approvers') {
         data.position = position;
-        data.status = 'INACTIVE'; // Approvers are inactive by default
+        data.status = 'INACTIVE';
     }
-    if (type === 'engineers') { // MODIFICATION: Add position for engineers
+    if (type === 'engineers') {
         data.position = position;
     }
     
@@ -1039,7 +908,6 @@ function handleAddSubmit(type) {
         .withSuccessHandler(() => {
             listMap[type].push(data); 
 
-            // Refresh position datalists
             if (type === 'employees' && position && !EMPLOYEE_POSITIONS.includes(position)) {
                 EMPLOYEE_POSITIONS.push(position);
             }
@@ -1059,13 +927,6 @@ function handleAddSubmit(type) {
 }
 
 
-// MODIFICATION: Added functions for Edit Modal
-
-/**
- * @description Shows the modal for editing a master data entry.
- * @param {string} type - 'employee', 'engineer', or 'approver'
- * @param {string} key - The unique key (Employee_ID for employees, Name for others).
- */
 function showEditForm(type, key) { 
     const modal = document.getElementById('edit-modal');
     const titleMap = {
@@ -1080,12 +941,10 @@ function showEditForm(type, key) {
     
     clearFormErrors('edit-form');
 
-    // Get all fields
     const nameInput = document.getElementById('edit-name');
     const employeeIdInput = document.getElementById('edit-employee-id');
     const positionInput = document.getElementById('edit-position');
     
-    // Get all groups
     const employeeIdGroup = document.getElementById('edit-employee-id-group');
     const positionGroup = document.getElementById('edit-position-group');
     
@@ -1107,7 +966,6 @@ function showEditForm(type, key) {
     const pos = item.position;
     const empId = item.employeeId;
     
-    // Reset fields to default state
     nameInput.value = name;
     nameInput.disabled = false;
     employeeIdInput.value = empId || '';
@@ -1118,34 +976,26 @@ function showEditForm(type, key) {
 
     if (type === 'employees') { 
         employeeIdGroup.classList.remove('hidden');
-        employeeIdInput.disabled = true; // Employee ID is disabled
+        employeeIdInput.disabled = true;
         positionGroup.classList.remove('hidden'); 
-        nameInput.disabled = false; // Name is editable
+        nameInput.disabled = false;
     } else if (type === 'approvers') { 
         employeeIdGroup.classList.add('hidden');
         positionGroup.classList.remove('hidden');
-        nameInput.disabled = false; // Name is editable
-    } else { // engineers
+        nameInput.disabled = false;
+    } else {
         employeeIdGroup.classList.add('hidden');
-        positionGroup.classList.remove('hidden'); // MODIFICATION: Show position for engineers
-        nameInput.disabled = false; // Name is editable
+        positionGroup.classList.remove('hidden');
+        nameInput.disabled = false;
     }
 
     modal.classList.remove('hidden');
 }
 
-/**
- * @description Closes the edit modal.
- */
 function closeEditModal() {
     document.getElementById('edit-modal').classList.add('hidden');
 }
 
-/**
- * @description Handles the submission of the edit form.
- * @param {string} type - 'employee', 'engineer', or 'approver'.
- * @param {string} key - The original key (Employee_ID or Name) used to find the record.
- */
 function handleEditSubmit(type, key) { 
     const newName = document.getElementById('edit-name').value.trim();
     const newPosition = document.getElementById('edit-position').value.trim(); 
@@ -1179,7 +1029,7 @@ function handleEditSubmit(type, key) {
     };
     
     if(type === 'engineers') {
-        data.employeeId = ""; // Ensure engineer doesn't get employeeId
+        data.employeeId = "";
     }
     
     const typeMap = { employees: 'employee', engineers: 'engineer', approvers: 'approver' };
@@ -1191,7 +1041,6 @@ function handleEditSubmit(type, key) {
                 originalItem.position = newPosition;
             }
             
-            // Refresh position datalists
             if (type === 'employees' && newPosition && !EMPLOYEE_POSITIONS.includes(newPosition)) {
                 EMPLOYEE_POSITIONS.push(newPosition);
             }
@@ -1210,4 +1059,3 @@ function handleEditSubmit(type, key) {
         .updateMasterData(typeMap[type], key, data); 
 }
 </script>
-
