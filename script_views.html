@@ -390,6 +390,7 @@ function showViewModal(toId) {
         employeesDisplay = employeesDisplay.join(', ');
     }
 
+    // MODIFICATION: Added "Distance" row
     content.innerHTML = `
         <div class="modal-header-sticky">
             <div class="flex justify-between items-start">
@@ -473,6 +474,7 @@ function showViewModal(toId) {
             </button>
         </div>
     `;
+    // END MODIFICATION
     
     const editBtnModal = content.querySelector('.edit-btn-modal');
     const datePrepared = new Date(order.Date_Prepared);
